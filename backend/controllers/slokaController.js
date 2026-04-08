@@ -109,9 +109,6 @@ const normalizeTags = (tags) => {
   return [];
 };
 
-const DAILY_ROTATION_START = new Date(2026, 0, 1);
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
 const getProblemMockFallback = (problem) => {
   const matched = mockSlokas.filter((sloka) => normalizeTags(sloka.tags).some((tag) => tag.includes(problem)));
   if (matched.length) return matched[0];
@@ -142,14 +139,13 @@ const resolveDailySeed = (inputDate) => {
     parsedDate = inputDate ? new Date(inputDate) : new Date();
   }
   const safeDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-  const floorDate = new Date(safeDate.getFullYear(), safeDate.getMonth(), safeDate.getDate());
-  const dayStart = floorDate < DAILY_ROTATION_START ? new Date(DAILY_ROTATION_START) : floorDate;
-  const yyyy = dayStart.getFullYear();
-  const month = String(dayStart.getMonth() + 1).padStart(2, '0');
-  const day = String(dayStart.getDate()).padStart(2, '0');
+  const yyyy = safeDate.getFullYear();
+  const month = String(safeDate.getMonth() + 1).padStart(2, '0');
+  const day = String(safeDate.getDate()).padStart(2, '0');
   const isoDay = `${yyyy}-${month}-${day}`;
 
-  const dayIndex = Math.floor((dayStart.getTime() - DAILY_ROTATION_START.getTime()) / MS_PER_DAY);
+  const dayStart = new Date(yyyy, safeDate.getMonth(), safeDate.getDate());
+  const dayIndex = Math.floor(dayStart.getTime() / (1000 * 60 * 60 * 24));
   return { isoDay, dayIndex };
 };
 

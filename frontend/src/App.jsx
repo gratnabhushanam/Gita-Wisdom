@@ -1,6 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
@@ -73,13 +72,6 @@ function AppShell() {
     setBgIndex(getSceneIndexForPath(location.pathname));
   }, [location.pathname]);
 
-  // Animated page transitions
-  const pageTransition = {
-    initial: { opacity: 0, x: 40 },
-    animate: { opacity: 1, x: 0, transition: { duration: 0.45, ease: 'easeOut' } },
-    exit: { opacity: 0, x: -40, transition: { duration: 0.3, ease: 'easeIn' } },
-  };
-
   useEffect(() => {
     if (isAuthRoute) {
       return undefined;
@@ -103,37 +95,48 @@ function AppShell() {
     );
   }
 
-  // Protect homepage and other routes
-  const hideNavFooter = isAuthRoute;
+  const pageFallback = (
+    <div className="flex min-h-[40vh] items-center justify-center text-white">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-spiritual-gold border-t-transparent"></div>
+        <p className="text-sm uppercase tracking-[0.2em] text-spiritual-textMuted">Loading page...</p>
+      </div>
+    </div>
+  );
+
   return (
-    <>
-      {!hideNavFooter && <Navbar />}
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={location.pathname}
-          initial={pageTransition.initial}
-          animate={pageTransition.animate}
-          exit={pageTransition.exit}
-          style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}
-        >
-          <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#06101E]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-devotion-gold"></div></div>}>
-            <Routes location={location} key={location.pathname}>
-              {/* Auth routes */}
+    <div className="app-shell flex min-h-screen flex-col relative text-white transition-all duration-1000">
+      {!isAuthRoute && (
+        <>
+            <div
+                key={scenes[bgIndex].image}
+              className={`fixed inset-0 z-0 bg-cover bg-center transition-all duration-1000 app-shell__background ${scenes[bgIndex].className}`}
+                style={{ backgroundImage: `url('${scenes[bgIndex].image}')` }}
+              aria-label={scenes[bgIndex].symbolLabel}
+            />
+          <div className="fixed inset-0 z-0 bg-[#06101E]/48 backdrop-blur-[1px]"></div>
+          <div className="fixed inset-0 z-0 opacity-20 pointer-events-none bg-gold-glow animate-pulse"></div>
+        </>
+      )}
+
+      <div className="relative z-10 flex min-h-screen flex-col">
+        {!isAuthRoute && <Navbar />}
+        <main className="flex-grow">
+          <Suspense fallback={pageFallback}>
+            <Routes>
+              <Route path="/" element={<Navigate to={user ? '/kids' : '/login'} replace />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/register/verify-otp" element={<RegisterVerifyOtp />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
-
-              {/* Protected routes */}
-              <Route path="/" element={user ? <Home /> : <Navigate to="/login" replace />} />
               <Route path="/home" element={user ? <Home /> : <Navigate to="/login" replace />} />
               <Route path="/stories" element={user ? <Stories /> : <Navigate to="/login" replace />} />
+              <Route path="/chapters" element={user ? <Stories /> : <Navigate to="/login" replace />} />
               <Route path="/videos" element={user ? <Videos /> : <Navigate to="/login" replace />} />
               <Route path="/sloka" element={user ? <Sloka /> : <Navigate to="/login" replace />} />
               <Route path="/about" element={user ? <About /> : <Navigate to="/login" replace />} />
               <Route path="/quiz" element={user ? <Quiz /> : <Navigate to="/login" replace />} />
               <Route path="/student" element={user ? <StudentGuide /> : <Navigate to="/login" replace />} />
-              <Route path="/admin" element={user ? <AdminDashboard /> : <Navigate to="/login" replace />} />
               <Route path="/mentor" element={user ? <Mentor /> : <Navigate to="/login" replace />} />
               <Route path="/daily-sloka" element={user ? <DailySloka /> : <Navigate to="/login" replace />} />
               <Route path="/reels" element={user ? <Reels /> : <Navigate to="/login" replace />} />
@@ -142,14 +145,14 @@ function AppShell() {
               <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" replace />} />
               <Route path="/movies" element={user ? <Movies /> : <Navigate to="/login" replace />} />
               <Route path="/upload-reel" element={user ? <UploadReel /> : <Navigate to="/login" replace />} />
-              <Route path="/chapters" element={user ? <Chapters /> : <Navigate to="/login" replace />} />
-              <Route path="*" element={<Navigate to={user ? "/" : "/login"} />} />
+              <Route path="/admin" element={user ? <AdminDashboard /> : <Navigate to="/login" replace />} />
+              <Route path="*" element={<Navigate to={user ? '/kids' : '/login'} replace />} />
             </Routes>
           </Suspense>
-          {!hideNavFooter && <Footer />}
-        </motion.div>
-      </AnimatePresence>
-    </>
+        </main>
+        {!isAuthRoute && <Footer />}
+      </div>
+    </div>
   );
 }
 

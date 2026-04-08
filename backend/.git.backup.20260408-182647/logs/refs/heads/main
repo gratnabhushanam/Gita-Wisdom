@@ -1,0 +1,17 @@
+0000000000000000000000000000000000000000 34d227b2c7272432791c2ec321153f47aa75bc12 Gratnabhushanam <gratnabhushanam@example.com> 1775586231 +0530	commit (initial): first commit
+34d227b2c7272432791c2ec321153f47aa75bc12 34d227b2c7272432791c2ec321153f47aa75bc12 Gratnabhushanam <gratnabhushanam@example.com> 1775586231 +0530	Branch: renamed refs/heads/main to refs/heads/main
+34d227b2c7272432791c2ec321153f47aa75bc12 34d227b2c7272432791c2ec321153f47aa75bc12 Gratnabhushanam <gratnabhushanam@example.com> 1775586526 +0530	Branch: renamed refs/heads/main to refs/heads/main
+34d227b2c7272432791c2ec321153f47aa75bc12 06a0385ac57add9f23ff0e8bb0853c561875a78d Gratnabhushanam <gratnabhushanam@example.com> 1775586684 +0530	commit: first commit
+06a0385ac57add9f23ff0e8bb0853c561875a78d 37bd2c8cdf975ddab1c85234ffba9c009192ba25 Gratnabhushanam <gratnabhushanam@example.com> 1775588609 +0530	commit: first commit
+37bd2c8cdf975ddab1c85234ffba9c009192ba25 37bd2c8cdf975ddab1c85234ffba9c009192ba25 Gratnabhushanam <gratnabhushanam@example.com> 1775588609 +0530	Branch: renamed refs/heads/main to refs/heads/main
+37bd2c8cdf975ddab1c85234ffba9c009192ba25 8cfc4e121f32a0d0b4b2e94e492d65c534cf8d59 Gratnabhushanam <gratnabhushanam@example.com> 1775589156 +0530	commit: Add Vercel ignore and production DB fallback
+8cfc4e121f32a0d0b4b2e94e492d65c534cf8d59 8cfc4e121f32a0d0b4b2e94e492d65c534cf8d59 Gratnabhushanam <gratnabhushanam@example.com> 1775589243 +0530	Branch: renamed refs/heads/main to refs/heads/main
+8cfc4e121f32a0d0b4b2e94e492d65c534cf8d59 9973b572310fb2a512ea16d61d9360ebf1761e1f Gratnabhushanam <gratnabhushanam@example.com> 1775590535 +0530	commit: Add Render blueprint for backend repo
+9973b572310fb2a512ea16d61d9360ebf1761e1f ac7186674f71c84fb0a34f3de23032672b43f6b6 Gratnabhushanam <gratnabhushanam@example.com> 1775590938 +0530	commit: Remove committed node_modules for Render build
+ac7186674f71c84fb0a34f3de23032672b43f6b6 9b821b388aeddf450dc42d60f034e3ded54ede08 Gratnabhushanam <gratnabhushanam@example.com> 1775592003 +0530	commit: Allow direct browser requests in CORS
+9b821b388aeddf450dc42d60f034e3ded54ede08 2a4c1aa855786d475c326c8cbe662c5edf5a6344 Gratnabhushanam <gratnabhushanam@example.com> 1775592451 +0530	commit: Allow Vercel origins in backend CORS
+2a4c1aa855786d475c326c8cbe662c5edf5a6344 4fc3724ca7d1b60a5df83a720ecc7065824cc2b8 Gratnabhushanam <gratnabhushanam@example.com> 1775593236 +0530	commit: Make Vercel backend use mock runtime
+4fc3724ca7d1b60a5df83a720ecc7065824cc2b8 921ddaf9eaef14eb2d1988d74b97893d20c20054 Gratnabhushanam <gratnabhushanam@example.com> 1775646932 +0530	commit: feat: harden Mongo production deployment and migrate API data paths
+921ddaf9eaef14eb2d1988d74b97893d20c20054 2a4e8fe5dcabc3eef6acac79f011917dd086c77f Gratnabhushanam <gratnabhushanam@example.com> 1775650746 +0530	commit: fix: stabilize daily sloka date parsing by local day key
+2a4e8fe5dcabc3eef6acac79f011917dd086c77f 6e535b41076d3f4051120e323573e112c2ccf2d5 Gratnabhushanam <gratnabhushanam@example.com> 1775652306 +0530	commit: feat: add quiz API and video collection support
+6e535b41076d3f4051120e323573e112c2ccf2d5 e618240d7073eeefd1707b6023243b6c3ff29e35 Gratnabhushanam <gratnabhushanam@example.com> 1775652781 +0530	commit: fix: normalize admin video collection title input

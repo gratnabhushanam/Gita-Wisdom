@@ -37,7 +37,7 @@ export default function Login() {
 
     try {
       await login(formData.email, formData.password);
-      navigate('/', { replace: true });
+      navigate('/kids', { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
     } finally {

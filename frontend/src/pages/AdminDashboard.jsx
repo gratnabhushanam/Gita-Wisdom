@@ -1,153 +1,13 @@
-import { resumableUpload } from '../utils/resumableUpload';
-  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
-  const [videoUploadFile, setVideoUploadFile] = useState(null);
-  // Add contentType, duration, orientation to videoForm
-  const [videoForm, setVideoForm] = useState({ title: '', description: '', videoUrl: '', category: 'reels', collectionTitle: 'Bhagavad Gita', isKids: false, tags: '', contentType: 'short', duration: '', orientation: '' });
-  // Handle resumable video file upload
-  const handleVideoFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    // Validation rules
-    const SHORT_MAX_SIZE_MB = 100;
-    const SHORT_MIN_DURATION = 3;
-    const SHORT_MAX_DURATION = 90;
-    const LONG_MAX_SIZE_MB = 5120; // 5GB
-    const LONG_MIN_DURATION = 91; // >90s
-    const LONG_MAX_DURATION = 14400; // 4 hours
-    setVideoUploadFile(file);
-    setVideoUploadProgress(0);
-    let duration = '';
-    let orientation = '';
-    let aspect = '';
-    let error = '';
-    try {
-      const videoEl = document.createElement('video');
-      videoEl.preload = 'metadata';
-      videoEl.onloadedmetadata = function () {
-        duration = videoEl.duration;
-        orientation = videoEl.videoWidth > videoEl.videoHeight ? 'landscape' : 'portrait';
-        aspect = (videoEl.videoWidth / videoEl.videoHeight).toFixed(2);
-        setVideoForm((prev) => ({ ...prev, duration, orientation }));
-        // Validation for short-form reels
-        if (videoForm.contentType === 'short') {
-          if (file.size > SHORT_MAX_SIZE_MB * 1024 * 1024) {
-            error = `File size must be <= ${SHORT_MAX_SIZE_MB}MB.`;
-          } else if (duration < SHORT_MIN_DURATION || duration > SHORT_MAX_DURATION) {
-            error = `Duration must be between ${SHORT_MIN_DURATION}s and ${SHORT_MAX_DURATION}s.`;
-          } else if (!(
-            (Math.abs(aspect - 0.56) < 0.1) || // 9:16
-            (Math.abs(aspect - 1.0) < 0.1)     // 1:1
-          )) {
-            error = 'Aspect ratio must be 9:16 (vertical) or 1:1 (square).';
-          }
-        }
-        // Validation for long-form OTT videos
-        else if (videoForm.contentType === 'long') {
-          if (file.size > LONG_MAX_SIZE_MB * 1024 * 1024) {
-            error = `File size must be <= ${LONG_MAX_SIZE_MB}MB.`;
-          } else if (duration < LONG_MIN_DURATION || duration > LONG_MAX_DURATION) {
-            error = `Duration must be between ${LONG_MIN_DURATION}s and ${LONG_MAX_DURATION}s.`;
-          } else if (!(
-            (Math.abs(aspect - 1.78) < 0.1) || // 16:9
-            (Math.abs(aspect - 1.33) < 0.1)    // 4:3
-          )) {
-            error = 'Aspect ratio must be 16:9 (landscape) or 4:3.';
-          }
-        }
-        if (error) {
-          setMessage({ type: 'error', text: error });
-          setVideoUploadFile(null);
-          setVideoUploadProgress(0);
-          return;
-        }
-      };
-      videoEl.src = URL.createObjectURL(file);
-    } catch {}
-    // Wait for metadata validation before upload
-    setTimeout(async () => {
-      if (error) return;
-      try {
-        const token = localStorage.getItem('token');
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          'video-title': videoForm.title,
-          'video-description': videoForm.description,
-          'video-tags': videoForm.tags,
-          'video-kids': videoForm.isKids ? 'true' : 'false',
-          'video-collection': videoForm.collectionTitle,
-          'video-category': videoForm.category,
-          'video-content-type': videoForm.contentType,
-          'video-duration': videoForm.duration,
-          'video-orientation': videoForm.orientation,
-        };
-        const result = await resumableUpload({
-          file,
-          url: '/api/videos/upload/resumable',
-          headers,
-          onProgress: setVideoUploadProgress,
-        });
-        if (result && result.videoUrl) {
-          setVideoForm((prev) => ({ ...prev, videoUrl: result.videoUrl, hlsUrl: result.hlsUrl }));
-        } else if (result && result.fileName) {
-          setVideoForm((prev) => ({ ...prev, videoUrl: `/uploads/reels/${result.fileName}` }));
-        }
-      } catch (err) {
-        // Try to extract backend error message
-        let errorMsg = 'Video upload failed.';
-        if (err && err.message) {
-          try {
-            // If error message is JSON, parse it
-            if (err.message.trim().startsWith('{')) {
-              const parsed = JSON.parse(err.message);
-              if (parsed && parsed.message) errorMsg = parsed.message;
-            } else {
-              errorMsg = err.message;
-            }
-          } catch {
-            errorMsg = err.message;
-          }
-        }
-        setMessage({ type: 'error', text: errorMsg });
-        setVideoUploadFile(null);
-        setVideoUploadProgress(0);
-      }
-    }, 300);
-  };
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { ErrorBoundary } from '../components/ErrorBoundary';
 import axios from 'axios';
-import { Database, Upload, Users, BookOpen, Video, LogOut, Settings, Film, Plus, X, Check, AlertCircle, Image as ImageIcon, Link as LinkIcon, FileText, Flame, Trash2, Pencil } from 'lucide-react';
+import { Database, Upload, Users, BookOpen, Video, LogOut, Settings, Film, Plus, X, Check, AlertCircle, Image as ImageIcon, Link as LinkIcon, FileText, Flame, Trash2, Pencil, CircleHelp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import MediaPlayerHLS from '../components/MediaPlayerHLS';
+import MediaPlayer from '../components/MediaPlayer';
 
 const VIDEO_COLLECTION_PRESETS = ['Bhagavad Gita', 'Ramayanam', 'Mahabharat', 'Puranas'];
 
-function AdminDashboardContent() {
-      // Pending content moderation state
-      const [selectedPendingIds, setSelectedPendingIds] = useState([]);
-      const [pendingTypeFilter, setPendingTypeFilter] = useState('all');
-
-      // Filter pendingUserReels by type
-      const filteredPending = pendingTypeFilter === 'all'
-        ? pendingUserReels
-        : pendingUserReels.filter(item => (item.type || item.contentType || '').toLowerCase() === pendingTypeFilter);
-
-      // Bulk moderation handler
-      const bulkModerate = async (status) => {
-        setLoading(true);
-        const token = localStorage.getItem('token');
-        await Promise.all(selectedPendingIds.map(id =>
-          axios.patch(`/api/videos/user-reels/${id}/moderate`, { status }, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-        ));
-        setSelectedPendingIds([]);
-        await fetchAdminData();
-        setLoading(false);
-      };
-    const [showAuthError, setShowAuthError] = useState(false);
+export default function AdminDashboard() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -161,14 +21,6 @@ function AdminDashboardContent() {
   const [quickFillStoryId, setQuickFillStoryId] = useState(null);
   const [moderationNotes, setModerationNotes] = useState({});
   const [message, setMessage] = useState({ type: '', text: '' });
-
-  // Auto-dismiss error messages after 5s
-  useEffect(() => {
-    if (message.type && message.text) {
-      const timer = setTimeout(() => setMessage({ type: '', text: '' }), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [message]);
   const [movieForm, setMovieForm] = useState({ title: '', description: '', videoUrl: '', thumbnail: '', releaseYear: 2025, ownerHistory: '', tags: '' });
   const [storyForm, setStoryForm] = useState({
     title: '',
@@ -190,17 +42,6 @@ function AdminDashboardContent() {
     tags: '',
   });
   const [videoForm, setVideoForm] = useState({ title: '', description: '', videoUrl: '', category: 'reels', collectionTitle: 'Bhagavad Gita', isKids: false, tags: '' });
-  // Quiz builder state for video upload
-  const [videoQuizList, setVideoQuizList] = useState([]);
-  const [videoQuizDraft, setVideoQuizDraft] = useState({
-    questionText: '',
-    optionA: '',
-    optionB: '',
-    optionC: '',
-    optionD: '',
-    correctOption: 'A',
-  });
-  const [videosUploadType, setVideosUploadType] = useState('video');
   const [quizForm, setQuizForm] = useState({
     questionText: '',
     category: 'Gita Challenge',
@@ -217,6 +58,7 @@ function AdminDashboardContent() {
     movies: 'Movie',
     stories: 'Story',
     videos: 'Video',
+    quiz: 'Quiz Question',
   };
 
   const currentContentLabel = contentLabels[activeTab] || 'Content';
@@ -258,20 +100,17 @@ function AdminDashboardContent() {
         const { data: stories } = await axios.get('/api/stories', { headers });
         setData(prev => ({ ...prev, stories }));
       } else if (activeTab === 'videos') {
-        const [videosResponse, pendingResponse, quizResponse] = await Promise.all([
+        const [videosResponse, pendingResponse] = await Promise.all([
           axios.get('/api/videos', { headers }),
           axios.get(`/api/videos/user-reels/moderation?status=pending&contentType=${pendingContentFilter}`, { headers }),
-          axios.get('/api/quiz/questions', { headers }),
         ]);
-        setData(prev => ({
-          ...prev,
-          videos: Array.isArray(videosResponse.data) ? videosResponse.data : [],
-          quizQuestions: Array.isArray(quizResponse.data) ? quizResponse.data : [],
-        }));
+        setData(prev => ({ ...prev, videos: videosResponse.data }));
         setPendingUserReels(Array.isArray(pendingResponse.data) ? pendingResponse.data : []);
+      } else if (activeTab === 'quiz') {
+        const { data: quizQuestions } = await axios.get('/api/quiz/questions', { headers });
+        setData(prev => ({ ...prev, quizQuestions: Array.isArray(quizQuestions) ? quizQuestions : [] }));
       }
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to fetch admin data. Please check your connection or try again later.' });
       console.error('Error fetching admin data:', error);
     }
   };
@@ -300,7 +139,6 @@ function AdminDashboardContent() {
     setLoading(true);
     let endpoint = '';
     let payload = {};
-    const publishLabel = activeTab === 'videos' && videosUploadType === 'quiz' ? 'Quiz Question' : currentContentLabel;
 
     try {
       const token = localStorage.getItem('token');
@@ -319,71 +157,43 @@ function AdminDashboardContent() {
           content: storyForm.content || storyForm[`content${languageKey}`] || '',
         };
       } else if (activeTab === 'videos') {
-        if (videosUploadType === 'quiz') {
-          endpoint = '/api/quiz/questions';
-          const optionMap = {
-            A: quizForm.optionA,
-            B: quizForm.optionB,
-            C: quizForm.optionC,
-            D: quizForm.optionD,
-          };
-          payload = {
-            questionText: quizForm.questionText,
-            category: quizForm.category,
-            videoUrl: quizForm.videoUrl,
-            options: ['A', 'B', 'C', 'D']
-              .map((key) => ({ answerText: String(optionMap[key] || '').trim(), isCorrect: quizForm.correctOption === key }))
-              .filter((item) => item.answerText),
-          };
-        } else {
-          endpoint = '/api/videos';
-          payload = {
-            ...videoForm,
-            collectionTitle: String(videoForm.collectionTitle || '').trim() || 'Bhagavad Gita',
-            tags: videoForm.tags.split(',').map(tag => tag.trim()),
-          };
-          // If quizzes were added, send them in a separate request after video upload
-        }
+        endpoint = '/api/videos';
+        payload = {
+          ...videoForm,
+          collectionTitle: String(videoForm.collectionTitle || '').trim() || 'Bhagavad Gita',
+          tags: videoForm.tags.split(',').map(tag => tag.trim()),
+        };
+      } else if (activeTab === 'quiz') {
+        endpoint = '/api/quiz/questions';
+        const optionMap = {
+          A: quizForm.optionA,
+          B: quizForm.optionB,
+          C: quizForm.optionC,
+          D: quizForm.optionD,
+        };
+        payload = {
+          questionText: quizForm.questionText,
+          category: quizForm.category,
+          videoUrl: quizForm.videoUrl,
+          options: ['A', 'B', 'C', 'D']
+            .map((key) => ({ answerText: String(optionMap[key] || '').trim(), isCorrect: quizForm.correctOption === key }))
+            .filter((item) => item.answerText),
+        };
       }
-
 
       if (activeTab === 'stories' && editingStoryId) {
         await axios.patch(endpoint, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-      } else if (activeTab === 'videos' && videosUploadType === 'video') {
-        // 1. Upload video
-        const videoRes = await axios.post(endpoint, payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const videoId = videoRes?.data?._id || videoRes?.data?.id || videoRes?.data?.videoId || null;
-        // 2. Upload quizzes if any
-        if (videoQuizList.length > 0 && videoId) {
-          for (const quiz of videoQuizList) {
-            const quizPayload = {
-              questionText: quiz.questionText,
-              category: videoForm.collectionTitle || 'Gita Challenge',
-              videoUrl: videoForm.videoUrl,
-              options: ['A', 'B', 'C', 'D']
-                .map((key) => ({ answerText: String(quiz[`option${key}`] || '').trim(), isCorrect: quiz.correctOption === key }))
-                .filter((item) => item.answerText),
-              videoId,
-            };
-            await axios.post('/api/quiz/questions', quizPayload, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-          }
-        }
       } else {
         await axios.post(endpoint, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
 
-      setMessage({ type: 'success', text: activeTab === 'stories' && editingStoryId ? 'Story updated successfully!' : `${publishLabel} published successfully!` });
+      setMessage({ type: 'success', text: activeTab === 'stories' && editingStoryId ? 'Story updated successfully!' : `${currentContentLabel} published successfully!` });
       setShowAddModal(false);
       resetForms();
-      setVideoQuizList([]);
       await fetchAdminData();
     } catch (error) {
       setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to publish content' });
@@ -472,7 +282,6 @@ function AdminDashboardContent() {
       optionD: '',
       correctOption: 'B',
     });
-    setVideosUploadType('video');
     setEditingStoryId(null);
   };
 
@@ -566,25 +375,8 @@ function AdminDashboardContent() {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-[#06101E]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-devotion-gold"></div></div>;
 
   return (
-    <div className="min-h-screen bg-[#06101E] text-white flex flex-col">
-      {/* Universal error message UI */}
-      {message.type === 'error' && message.text && (
-        <div className="fixed top-0 left-0 right-0 z-[200] flex items-center justify-center py-4 bg-red-900/90 border-b-2 border-red-500 shadow-2xl">
-          <span className="text-lg font-bold text-red-200">{message.text}</span>
-        </div>
-      )}
-      {message.type === 'error' && message.text.toLowerCase().includes('login') && (
-        <div className="w-full flex flex-col items-center justify-center py-8 bg-black/90 z-50">
-          <div className="text-2xl font-bold text-yellow-400 mb-4">{message.text}</div>
-          <button
-            onClick={() => { setShowAuthError(false); navigate('/login'); }}
-            className="px-8 py-3 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 text-black font-bold text-lg shadow-lg hover:scale-105 transition-transform"
-          >
-            Go to Login
-          </button>
-        </div>
-      )}
-      {/* Admin Sidebar (Desktop) */}
+    <div className="min-h-screen bg-[#06101E] text-white flex">
+      {/* Admin Sidebar */}
       <div className="w-72 bg-devotion-darkBlue/80 backdrop-blur-2xl border-r border-white/5 hidden md:flex flex-col shadow-2xl">
         <div className="p-8 border-b border-white/5">
           <div className="flex items-center gap-3 mb-2">
@@ -597,14 +389,15 @@ function AdminDashboardContent() {
           </div>
           <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em]">Spiritual Management</p>
         </div>
+
         <nav className="flex-1 p-6 space-y-3">
           {[
             { id: 'dashboard', name: 'Analytics', icon: <Database className="w-5 h-5" /> },
             { id: 'movies', name: 'Movies', icon: <Film className="w-5 h-5" /> },
             { id: 'stories', name: 'Stories', icon: <BookOpen className="w-5 h-5" /> },
             { id: 'videos', name: 'Videos', icon: <Video className="w-5 h-5" /> },
+            { id: 'quiz', name: 'Quiz', icon: <CircleHelp className="w-5 h-5" /> },
             { id: 'users', name: 'Users', icon: <Users className="w-5 h-5" /> },
-            { id: 'settings', name: 'Settings', icon: <Settings className="w-5 h-5" /> },
           ].map(item => (
             <button
               key={item.id}
@@ -615,6 +408,7 @@ function AdminDashboardContent() {
             </button>
           ))}
         </nav>
+
         <div className="p-6 border-t border-white/5">
           <button 
             onClick={() => navigate('/')}
@@ -625,56 +419,8 @@ function AdminDashboardContent() {
         </div>
       </div>
 
-      {/* Mobile Admin Topbar Menu */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-devotion-darkBlue/95 border-b border-devotion-gold/20 flex items-center justify-between px-4 py-3 shadow-xl">
-        <div className="flex items-center gap-3">
-          <Settings className="w-5 h-5 text-devotion-gold" />
-          <span className="font-serif font-black text-lg text-white tracking-widest uppercase">Gita<span className="text-devotion-gold">Admin</span></span>
-        </div>
-        <div className="relative">
-          <button
-            onClick={() => setShowAddModal(false) || setShowMobileMenu((v) => !v)}
-            className="p-2 rounded-full bg-devotion-gold/10 border border-devotion-gold/30 text-devotion-gold focus:outline-none focus:ring-2 focus:ring-devotion-gold"
-            aria-label="Open admin menu"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-          {typeof showMobileMenu !== 'undefined' && showMobileMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-devotion-darkBlue border border-devotion-gold/20 rounded-2xl shadow-2xl z-50">
-              {[
-                { id: 'dashboard', name: 'Analytics', icon: <Database className="w-4 h-4" /> },
-                { id: 'movies', name: 'Movies', icon: <Film className="w-4 h-4" /> },
-                { id: 'stories', name: 'Stories', icon: <BookOpen className="w-4 h-4" /> },
-                { id: 'videos', name: 'Videos', icon: <Video className="w-4 h-4" /> },
-                { id: 'users', name: 'Users', icon: <Users className="w-4 h-4" /> },
-              ].map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
-                  className={`w-full flex items-center gap-3 px-5 py-3 rounded-xl transition-all font-black text-[11px] uppercase tracking-widest ${activeTab === item.id ? 'bg-devotion-gold text-devotion-darkBlue' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}
-                >
-                  {item.icon} {item.name}
-                </button>
-              ))}
-              <button
-                onClick={() => { navigate('/'); setShowMobileMenu(false); }}
-                className="w-full flex items-center gap-3 px-5 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 font-black text-[11px] uppercase tracking-widest transition-all border-t border-devotion-gold/10 mt-2"
-              >
-                <LogOut className="w-4 h-4" /> Exit to App
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Add state for mobile menu */}
-      {typeof showMobileMenu === 'undefined' && (
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        (() => { const [showMobileMenu, setShowMobileMenu] = useState(false); return null; })()
-      )}
-
       {/* Admin Content Area */}
-      <div className="flex-1 flex flex-col pt-24 px-4 md:px-10 pb-10 overflow-y-auto">
+      <div className="flex-1 flex flex-col pt-24 px-10 pb-10 overflow-y-auto">
          
          {message.text && (
            <div className={`fixed top-28 right-10 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl border backdrop-blur-xl animate-shake shadow-2xl ${message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
@@ -683,61 +429,31 @@ function AdminDashboardContent() {
            </div>
          )}
 
-         <div className="mb-12 flex flex-col md:flex-row justify-between items-end gap-6">
+         <div className="mb-12 flex justify-between items-end">
             <div>
-               <h1 className="text-6xl font-serif font-black text-white mb-2 uppercase tracking-tighter drop-shadow-lg">
-                 {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} <span className="text-devotion-gold">Center</span>
+               <h1 className="text-6xl font-serif font-black text-white mb-2 uppercase tracking-tighter">
+                 {activeTab} <span className="text-devotion-gold">Center</span>
                </h1>
-               <p className="text-gray-400 text-base font-serif italic">Manage the divine knowledge base with ease and clarity.</p>
+               <p className="text-gray-500 text-sm font-serif italic">Managing the divine knowledge base.</p>
             </div>
-            {['movies', 'stories', 'videos'].includes(activeTab) && (
-              <button
+            
+            {['movies', 'stories', 'videos', 'quiz'].includes(activeTab) && (
+              <button 
                 onClick={() => {
                   resetForms();
-                  if (activeTab === 'videos') {
-                    setVideosUploadType('video');
-                  }
                   setShowAddModal(true);
                 }}
-                className="bg-gradient-to-r from-yellow-400 to-devotion-gold text-devotion-darkBlue px-10 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:from-yellow-300 hover:to-yellow-500 transition-all flex items-center gap-3 shadow-2xl shadow-devotion-gold/20 transform hover:-translate-y-1 active:scale-95"
+                className="bg-devotion-gold text-devotion-darkBlue px-10 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-yellow-400 transition-all flex items-center gap-3 shadow-2xl shadow-devotion-gold/20 transform hover:-translate-y-1 active:scale-95"
               >
-                <Plus className="w-5 h-5" /> Add New {activeTab === 'videos' ? 'Video' : currentContentLabel}
+                <Plus className="w-5 h-5" /> Add New {currentContentLabel}
               </button>
             )}
          </div>
-            {activeTab === 'settings' && (
-              <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl flex flex-col items-center justify-center min-h-[300px]">
-                <h2 className="text-3xl font-serif font-black text-devotion-gold mb-6 uppercase tracking-widest">Settings</h2>
-                <p className="text-gray-400 text-lg mb-4">This is a placeholder for admin settings and preferences. You can add system info, theme options, or other controls here.</p>
-                <button className="px-8 py-3 rounded-xl bg-devotion-gold text-devotion-darkBlue font-black uppercase tracking-widest shadow-lg hover:bg-yellow-400 transition-all">Sample Action</button>
-              </div>
-            )}
 
           <div className="grid grid-cols-1 gap-6">
             {activeTab === 'dashboard' && data.stats && (
-                <div className="space-y-12">
+              <div className="space-y-12">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-                                  {/* User Signups Over Time Chart */}
-                                  <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl mt-12">
-                                    <h3 className="text-2xl font-serif font-black text-white mb-10 uppercase tracking-widest flex items-center gap-4">
-                                      <Users className="text-devotion-gold" /> User Signups Over Time
-                                    </h3>
-                                    <ResponsiveContainer width="100%" height={300}>
-                                      <LineChart
-                                        data={Array.isArray(data.stats.recentUsers) ? [...data.stats.recentUsers].reverse().map(u => ({
-                                          date: new Date(u.createdAt).toLocaleDateString(),
-                                          count: 1
-                                        })) : []}
-                                      >
-                                        <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="date" stroke="#f5d06f" />
-                                        <YAxis allowDecimals={false} stroke="#f5d06f" />
-                                        <Tooltip />
-                                        <Line type="monotone" dataKey="count" stroke="#f5d06f" strokeWidth={3} dot={{ r: 6 }} />
-                                      </LineChart>
-                                    </ResponsiveContainer>
-                                    <p className="text-gray-500 text-xs mt-4">Demo: Each signup is shown as a point. For real analytics, aggregate by date.</p>
-                                  </div>
                    {[
                      { label: 'Seekers Joined', value: data.stats.totalUsers, icon: <Users />, color: 'text-blue-400' },
                      { label: 'Divine Movies', value: data.stats.totalMovies, icon: <Film />, color: 'text-devotion-gold' },
@@ -826,56 +542,37 @@ function AdminDashboardContent() {
                </div>
             )}
 
-            {activeTab === 'videos' && (
+            {activeTab === 'movies' && (
                <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl">
-                  <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-10 gap-4">
-                     <div>
-                       <h3 className="text-3xl font-serif font-black text-white uppercase tracking-tighter">Video <span className="text-devotion-gold">Library</span></h3>
-                       <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.videos.length}</span>
-                     </div>
-                     <div className="flex gap-2 items-center">
-                       <select value={pendingTypeFilter} onChange={e => setPendingTypeFilter(e.target.value)} className="px-4 py-2 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-devotion-gold">
-                         <option value="all">All Types</option>
-                         <option value="video">Videos</option>
-                         <option value="story">Stories</option>
-                         <option value="quiz">Quizzes</option>
-                       </select>
-                       <button onClick={() => bulkModerate('approved')} disabled={selectedPendingIds.length === 0} className="px-4 py-2 rounded-xl bg-green-600/80 text-white font-bold disabled:bg-gray-600">Approve Selected</button>
-                       <button onClick={() => bulkModerate('rejected')} disabled={selectedPendingIds.length === 0} className="px-4 py-2 rounded-xl bg-red-600/80 text-white font-bold disabled:bg-gray-600">Reject Selected</button>
-                     </div>
+                  <div className="flex justify-between items-center mb-10">
+                     <h3 className="text-3xl font-serif font-black text-white uppercase tracking-tighter">Movie <span className="text-devotion-gold">Library</span></h3>
+                     <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.movies.length}</span>
                   </div>
-                  {filteredPending.length === 0 ? (
-                    <p className="text-gray-500 text-center py-12">No pending content for moderation.</p>
+                  {data.movies.length === 0 ? (
+                    <p className="text-gray-500 text-center py-12">No movies uploaded yet.</p>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 overflow-x-auto">
-                      {filteredPending.map((item) => (
-                        <div key={item._id || item.id} className="p-6 rounded-2xl border border-white/10 bg-white/5 flex flex-col relative">
-                          <input
-                            type="checkbox"
-                            className="absolute top-4 right-4 w-5 h-5 accent-devotion-gold"
-                            checked={selectedPendingIds.includes(item._id || item.id)}
-                            onChange={e => {
-                              if (e.target.checked) {
-                                setSelectedPendingIds([...selectedPendingIds, item._id || item.id]);
-                              } else {
-                                setSelectedPendingIds(selectedPendingIds.filter(id => id !== (item._id || item.id)));
-                              }
-                            }}
-                          />
-                          <h4 className="text-white font-bold text-lg mb-2">{item.title || item.name || 'Untitled'}</h4>
-                          <p className="text-xs text-gray-400 mb-3">{item.type || item.contentType || 'Unknown'} • Status: <span className={`font-bold ${item.status === 'pending' ? 'text-yellow-400' : item.status === 'approved' ? 'text-green-400' : 'text-red-400'}`}>{item.status || 'pending'}</span></p>
-                          <p className="text-sm text-gray-300 line-clamp-2 mb-4">{item.description || item.summary || 'No description'}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {data.movies.map((movie) => (
+                        <div key={movie._id || movie.id} className="p-6 rounded-2xl border border-white/10 bg-white/5 flex flex-col">
+                          {movie.videoUrl && (
+                            <div className="mb-4 rounded-xl overflow-hidden border border-devotion-gold/20 aspect-video bg-black">
+                              <MediaPlayer
+                                url={movie.videoUrl}
+                                title={movie.title}
+                                className="w-full h-full object-cover"
+                                youtubeParams="autoplay=0&rel=0&modestbranding=1"
+                                controls
+                              />
+                            </div>
+                          )}
+                          <h4 className="text-white font-bold text-lg mb-2">{movie.title}</h4>
+                          <p className="text-xs text-gray-400 mb-3">{movie.releaseYear || 'N/A'} • {(movie.tags || []).join(', ') || 'No tags'}</p>
+                          <p className="text-sm text-gray-300 line-clamp-2 mb-4">{movie.description || 'No description'}</p>
                           <button
-                            onClick={() => handleModerateUserReel(item._id || item.id, 'approved')}
-                            className="mt-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-green-500/30 text-green-300 hover:text-green-200 hover:bg-green-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
+                            onClick={() => handleDeleteContent('movies', movie._id || movie.id, movie.title || 'Untitled')}
+                            className="mt-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
                           >
-                            <Check className="w-4 h-4" /> Approve
-                          </button>
-                          <button
-                            onClick={() => handleModerateUserReel(item._id || item.id, 'rejected')}
-                            className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
-                          >
-                            <X className="w-4 h-4" /> Reject
+                            <Trash2 className="w-4 h-4" /> Delete
                           </button>
                         </div>
                       ))}
@@ -1067,9 +764,8 @@ function AdminDashboardContent() {
                         <div key={video._id || video.id} className="p-6 rounded-2xl border border-white/10 bg-white/5 flex flex-col">
                           {video.videoUrl && (
                             <div className="mb-4 rounded-xl overflow-hidden border border-devotion-gold/20 aspect-video bg-black">
-                              <MediaPlayerHLS
+                              <MediaPlayer
                                 url={video.videoUrl}
-                                hlsUrl={video.hlsUrl}
                                 title={video.title}
                                 className="w-full h-full object-cover"
                                 youtubeParams="autoplay=0&rel=0&modestbranding=1"
@@ -1090,51 +786,41 @@ function AdminDashboardContent() {
                       ))}
                     </div>
                   )}
+               </div>
+            )}
 
-                  <div className="mt-12 border-t border-white/10 pt-10">
-                    <div className="flex justify-between items-center mb-8">
-                      <h3 className="text-2xl font-serif font-black text-white uppercase tracking-tighter">Quiz <span className="text-devotion-gold">Library</span></h3>
-                      <div className="flex items-center gap-3">
-                        <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.quizQuestions.length}</span>
-                        <button
-                          onClick={() => {
-                            resetForms();
-                            setVideosUploadType('quiz');
-                            setShowAddModal(true);
-                          }}
-                          className="bg-white/10 border border-white/20 text-white px-5 py-2 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/15 transition-all flex items-center gap-2"
-                        >
-                          <Plus className="w-4 h-4" /> Add Quiz
-                        </button>
-                      </div>
-                    </div>
-
-                    {data.quizQuestions.length === 0 ? (
-                      <p className="text-gray-500 text-center py-8">No quiz questions uploaded yet.</p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-x-auto">
-                        {data.quizQuestions.map((question) => (
-                          <div key={question.id} className="p-6 rounded-2xl border border-white/10 bg-white/5 flex flex-col">
-                            <p className="text-[10px] uppercase tracking-widest text-devotion-gold mb-2">{question.category || 'Gita Challenge'}</p>
-                            <h4 className="text-white font-bold text-lg mb-4">{question.questionText}</h4>
-                            <ul className="space-y-2 mb-5">
-                              {(question.options || []).map((option, idx) => (
-                                <li key={`${question.id}-${idx}`} className={`text-sm px-3 py-2 rounded-lg border ${option.isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-300' : 'border-white/10 text-gray-300'}`}>
-                                  {option.answerText}
-                                </li>
-                              ))}
-                            </ul>
-                            <button
-                              onClick={() => handleDeleteContent('quiz/questions', question.id, question.questionText || 'Question')}
-                              className="mt-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
-                            >
-                              <Trash2 className="w-4 h-4" /> Delete
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+            {activeTab === 'quiz' && (
+               <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl">
+                  <div className="flex justify-between items-center mb-10">
+                     <h3 className="text-3xl font-serif font-black text-white uppercase tracking-tighter">Quiz <span className="text-devotion-gold">Library</span></h3>
+                     <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.quizQuestions.length}</span>
                   </div>
+
+                  {data.quizQuestions.length === 0 ? (
+                    <p className="text-gray-500 text-center py-12">No quiz questions uploaded yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {data.quizQuestions.map((question) => (
+                        <div key={question.id} className="p-6 rounded-2xl border border-white/10 bg-white/5 flex flex-col">
+                          <p className="text-[10px] uppercase tracking-widest text-devotion-gold mb-2">{question.category || 'Gita Challenge'}</p>
+                          <h4 className="text-white font-bold text-lg mb-4">{question.questionText}</h4>
+                          <ul className="space-y-2 mb-5">
+                            {(question.options || []).map((option, idx) => (
+                              <li key={`${question.id}-${idx}`} className={`text-sm px-3 py-2 rounded-lg border ${option.isCorrect ? 'border-green-500/40 bg-green-500/10 text-green-300' : 'border-white/10 text-gray-300'}`}>
+                                {option.answerText}
+                              </li>
+                            ))}
+                          </ul>
+                          <button
+                            onClick={() => handleDeleteContent('quiz/questions', question.id, question.questionText || 'Question')}
+                            className="mt-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
+                          >
+                            <Trash2 className="w-4 h-4" /> Delete
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                </div>
             )}
          </div>
@@ -1142,8 +828,8 @@ function AdminDashboardContent() {
 
       {/* Universal Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/95 backdrop-blur-xl">
-           <div className="bg-[#0B1F3A] w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-5xl max-h-[90vh] overflow-y-auto rounded-[2rem] md:rounded-[3.5rem] border border-devotion-gold/30 p-4 sm:p-10 md:p-20 relative shadow-[0_0_150px_rgba(255,215,0,0.2)]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl">
+           <div className="bg-[#0B1F3A] w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-[3.5rem] border border-devotion-gold/30 p-10 md:p-20 relative shadow-[0_0_150px_rgba(255,215,0,0.2)]">
               <button 
                 onClick={() => {
                   setShowAddModal(false);
@@ -1155,14 +841,14 @@ function AdminDashboardContent() {
               </button>
 
               <h2 className="text-5xl font-serif font-black text-white mb-12 text-center uppercase tracking-tighter">
-                {activeTab === 'stories' && editingStoryId ? 'Edit' : 'Publish'} <span className="text-devotion-gold">{activeTab === 'stories' ? 'Story' : (activeTab === 'videos' && videosUploadType === 'quiz' ? 'Quiz Question' : currentContentLabel)}</span>
+                {activeTab === 'stories' && editingStoryId ? 'Edit' : 'Publish'} <span className="text-devotion-gold">{activeTab === 'stories' ? 'Story' : currentContentLabel}</span>
               </h2>
 
               <form onSubmit={handleAddContent} className="space-y-10">
                  
                  {/* MOVIE FORM */}
                  {activeTab === 'movies' && (
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10 overflow-x-auto">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                       <div className="space-y-4">
                          <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2"><FileText className="w-3 h-3"/> Movie Title</label>
                          <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none" placeholder="e.g. Shri Krishna" value={movieForm.title} onChange={e => setMovieForm({...movieForm, title: e.target.value})} />
@@ -1188,7 +874,7 @@ function AdminDashboardContent() {
 
                  {/* STORY FORM */}
                  {activeTab === 'stories' && (
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10 overflow-x-auto">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                       <div className="space-y-4">
                          <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Story Title</label>
                          <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none" value={storyForm.title} onChange={e => setStoryForm({...storyForm, title: e.target.value})} />
@@ -1257,52 +943,19 @@ function AdminDashboardContent() {
                  )}
 
                  {/* VIDEO FORM */}
-                 {activeTab === 'videos' && videosUploadType === 'video' && (
-                   <>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10 overflow-x-auto">
-                      <div className="space-y-4">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Content Type</label>
-                         <select
-                           className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none"
-                           value={videoForm.contentType}
-                           onChange={e => setVideoForm({ ...videoForm, contentType: e.target.value })}
-                         >
-                           <option value="short">Short-form Reel (&#60;= 90s)</option>
-                           <option value="long">Long-form Movie / Series</option>
-                         </select>
-                      </div>
+                 {activeTab === 'videos' && (
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                       <div className="space-y-4">
                          <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Video Title</label>
                          <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none" value={videoForm.title} onChange={e => setVideoForm({...videoForm, title: e.target.value})} />
                       </div>
                       <div className="space-y-4">
                          <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Video URL</label>
-                         <input
-                           type="file"
-                           accept="video/*"
-                           className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none"
-                           onChange={handleVideoFileChange}
-                         />
-                         {videoUploadProgress > 0 && videoUploadProgress < 100 && (
-                           <div className="mt-2 text-xs text-devotion-gold">Uploading: {videoUploadProgress}%</div>
-                         )}
-                         {videoForm.duration && (
-                           <div className="mt-2 text-xs text-devotion-gold">
-                             Duration: {Math.round(videoForm.duration)}s &nbsp;|&nbsp; Orientation: {videoForm.orientation}
-                           </div>
-                         )}
-                         <input
-                           required
-                           className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none mt-2"
-                           placeholder="https://cloudinary.com/... or https://example.com/video.mp4"
-                           value={videoForm.videoUrl}
-                           onChange={e => setVideoForm({...videoForm, videoUrl: e.target.value})}
-                         />
+                         <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none" placeholder="https://cloudinary.com/... or https://example.com/video.mp4" value={videoForm.videoUrl} onChange={e => setVideoForm({...videoForm, videoUrl: e.target.value})} />
                          {videoForm.videoUrl && (
                            <div className="mt-3 rounded-xl overflow-hidden border border-devotion-gold/30 aspect-video bg-black">
-                             <MediaPlayerHLS
+                             <MediaPlayer
                                url={videoForm.videoUrl}
-                               hlsUrl={videoForm.hlsUrl}
                                title={videoForm.title}
                                className="w-full h-full object-cover"
                                youtubeParams="autoplay=0&rel=0&modestbranding=1"
@@ -1364,70 +1017,11 @@ function AdminDashboardContent() {
                          <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold">Show in Kids Mode?</label>
                       </div>
                    </div>
-                   {/* Embedded Quiz Builder for Video */}
-                   <div className="mt-10 bg-[#0B1F3A] rounded-2xl p-6 border border-devotion-gold/30">
-                     <h3 className="text-lg font-black text-devotion-gold mb-2">Related Quizzes (Optional)</h3>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-x-auto">
-                       <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Question</label>
-                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.questionText} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, questionText: e.target.value })} />
-                       </div>
-                       <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Correct Option</label>
-                         <select className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.correctOption} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, correctOption: e.target.value })}>
-                           <option value="A">A</option>
-                           <option value="B">B</option>
-                           <option value="C">C</option>
-                           <option value="D">D</option>
-                         </select>
-                       </div>
-                       <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option A</label>
-                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionA} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionA: e.target.value })} />
-                       </div>
-                       <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option B</label>
-                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionB} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionB: e.target.value })} />
-                       </div>
-                       <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option C</label>
-                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionC} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionC: e.target.value })} />
-                       </div>
-                       <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option D</label>
-                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionD} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionD: e.target.value })} />
-                       </div>
-                     </div>
-                     <button
-                       type="button"
-                       className="mt-4 bg-devotion-gold text-devotion-darkBlue py-2 px-6 rounded-xl font-black text-xs uppercase tracking-widest shadow hover:bg-yellow-400 transition-all"
-                       onClick={() => {
-                         if (!videoQuizDraft.questionText || !videoQuizDraft.optionA || !videoQuizDraft.optionB) return;
-                         setVideoQuizList([...videoQuizList, videoQuizDraft]);
-                         setVideoQuizDraft({ questionText: '', optionA: '', optionB: '', optionC: '', optionD: '', correctOption: 'A' });
-                       }}
-                     >Add Quiz Question</button>
-                     {videoQuizList.length > 0 && (
-                       <div className="mt-6">
-                         <h4 className="font-bold text-devotion-gold mb-2">Quiz Questions Added:</h4>
-                         <ul className="space-y-2">
-                           {videoQuizList.map((quiz, idx) => (
-                             <li key={idx} className="bg-white/5 rounded-xl px-4 py-2 flex flex-col md:flex-row md:items-center md:gap-4">
-                               <span className="flex-1">{quiz.questionText}</span>
-                               <span className="text-xs text-devotion-gold">Correct: {quiz.correctOption}</span>
-                               <button type="button" className="ml-4 text-red-400 hover:text-red-600 font-bold" onClick={() => setVideoQuizList(videoQuizList.filter((_, i) => i !== idx))}>Remove</button>
-                             </li>
-                           ))}
-                         </ul>
-                       </div>
-                     )}
-                   </div>
-                   </>
                  )}
 
                   {/* QUIZ FORM */}
-                  {activeTab === 'videos' && videosUploadType === 'quiz' && (
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10 overflow-x-auto">
+                  {activeTab === 'quiz' && (
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                      <div className="md:col-span-2 space-y-4">
                        <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Question</label>
                        <textarea required rows="3" className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none" value={quizForm.questionText} onChange={e => setQuizForm({...quizForm, questionText: e.target.value})} />
@@ -1468,7 +1062,7 @@ function AdminDashboardContent() {
                    </div>
                   )}
 
-                 {['movies', 'stories'].includes(activeTab) || (activeTab === 'videos' && videosUploadType === 'video') ? (
+                 {['movies', 'stories', 'videos'].includes(activeTab) && (
                  <div className="space-y-4">
                     <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Tags (comma separated)</label>
                     <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none" placeholder="Motivation, Karma, Peace" 
@@ -1480,7 +1074,7 @@ function AdminDashboardContent() {
                       }} 
                     />
                  </div>
-                 ) : null}
+                 )}
 
                  <button 
                    type="submit"
@@ -1490,7 +1084,7 @@ function AdminDashboardContent() {
                     {loading ? <div className="w-6 h-6 border-2 border-devotion-darkBlue border-t-transparent rounded-full animate-spin"></div> : (
                       <>
                         <Upload className="w-6 h-6 group-hover:scale-125 transition-transform" />
-                        {activeTab === 'stories' && editingStoryId ? 'UPDATE STORY' : (activeTab === 'videos' && videosUploadType === 'quiz' ? 'PUBLISH QUIZ QUESTION' : 'PUBLISH TO DIVINE LIBRARY')}
+                        {activeTab === 'stories' && editingStoryId ? 'UPDATE STORY' : 'PUBLISH TO DIVINE LIBRARY'}
                       </>
                     )}
                  </button>
@@ -1500,13 +1094,5 @@ function AdminDashboardContent() {
       )}
 
     </div>
-  );
-}
-
-export default function AdminDashboard() {
-  return (
-    <ErrorBoundary>
-      <AdminDashboardContent />
-    </ErrorBoundary>
   );
 }

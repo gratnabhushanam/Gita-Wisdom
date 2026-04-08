@@ -49,8 +49,8 @@ Quick path using your Render dashboard:
 - `SQL_FALLBACK_WHEN_MONGO=false`
 - `CORS_ALLOWED_ORIGINS=https://YOUR_FRONTEND_PROJECT.vercel.app`
 - `ADMIN_NAME=Gita Admin`
-- `ADMIN_EMAIL=gitawisdom143@gmail.com`
-- `ADMIN_PASSWORD=REPLACE_WITH_A_STRONG_PASSWORD`
+- `ADMIN_EMAIL=admin@yourdomain.com`
+- `ADMIN_PASSWORD=REPLACE_WITH_STRONG_PASSWORD`
 - `EMAIL_USER=yourgmail@gmail.com`
 - `EMAIL_PASS=your_16_char_gmail_app_password`
 - `EMAIL_FROM_NAME=Gita Wisdom`

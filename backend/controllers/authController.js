@@ -5,7 +5,6 @@ const StoryMongo = require('../models/mongo/StoryMongo');
 const MovieMongo = require('../models/mongo/MovieMongo');
 const VideoMongo = require('../models/mongo/VideoMongo');
 const generateToken = require('../utils/generateToken');
-const notificationService = require('../utils/notificationService');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const mockContentStore = require('../utils/mockContentStore');
@@ -144,232 +143,36 @@ const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
 const getOtpExpiryTime = () => Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000;
 
-const EMAIL_PROVIDER = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
-const ALLOW_OTP_PREVIEW = String(process.env.ALLOW_OTP_PREVIEW || 'false').toLowerCase() === 'true' && String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
-const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
-const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev').trim();
-const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Gita Wisdom').trim();
-const BREVO_API_KEY = String(process.env.BREVO_API_KEY || '').trim();
-const BREVO_FROM_EMAIL = String(process.env.BREVO_FROM_EMAIL || '').trim();
-const BREVO_FROM_NAME = String(process.env.BREVO_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Gita Wisdom').trim();
-
 const getEmailAuthConfig = () => {
   const user = String(process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
   const pass = String(process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
   return { user, pass };
 };
 
-const isResendConfigured = () => Boolean(RESEND_API_KEY);
-const isBrevoConfigured = () => Boolean(BREVO_API_KEY && BREVO_FROM_EMAIL);
-
 const isEmailTransportConfigured = () => {
   const { user, pass } = getEmailAuthConfig();
-  return isResendConfigured() || isBrevoConfigured() || Boolean(user && pass);
+  return Boolean(user && pass);
 };
-
-const resolveEmailProvider = () => {
-  if (ALLOW_OTP_PREVIEW) {
-    return 'preview';
-  }
-
-  if (EMAIL_PROVIDER === 'resend' || EMAIL_PROVIDER === 'smtp' || EMAIL_PROVIDER === 'brevo') {
-    return EMAIL_PROVIDER;
-  }
-
-  const { user, pass } = getEmailAuthConfig();
-
-  // Prefer SMTP only when explicitly configured and no API provider is selected.
-  if (user && pass) {
-    return 'smtp';
-  }
-
-  if (isResendConfigured()) {
-    return 'resend';
-  }
-
-  if (isBrevoConfigured()) {
-    return 'brevo';
-  }
-
-  return 'smtp';
-};
-
-const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 12000);
-const SMTP_HOST = String(process.env.SMTP_HOST || 'smtp.gmail.com').trim();
-const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
-const SMTP_SECURE = String(process.env.SMTP_SECURE || (SMTP_PORT === 465 ? 'true' : 'false')).toLowerCase() === 'true';
-const RESEND_TIMEOUT_MS = Number(process.env.RESEND_TIMEOUT_MS || 12000);
-const BREVO_TIMEOUT_MS = Number(process.env.BREVO_TIMEOUT_MS || 12000);
 
 const buildTransporter = () => nodemailer.createTransport({
-  host: SMTP_HOST,
-  port: SMTP_PORT,
-  secure: SMTP_SECURE,
-  connectionTimeout: SMTP_TIMEOUT_MS,
-  greetingTimeout: SMTP_TIMEOUT_MS,
-  socketTimeout: SMTP_TIMEOUT_MS,
+  service: 'gmail',
   auth: {
     user: getEmailAuthConfig().user,
     pass: getEmailAuthConfig().pass,
   },
 });
 
-const buildResendPayload = ({ email, name, otp }) => ({
-  from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
-  to: [email],
-  subject: 'Your Gita Wisdom OTP Code',
-  text: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
-  html: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
-});
-
-const buildBrevoPayload = ({ email, name, otp }) => ({
-  sender: {
-    name: BREVO_FROM_NAME,
-    email: BREVO_FROM_EMAIL,
-  },
-  to: [{ email }],
-  subject: 'Your Gita Wisdom OTP Code',
-  textContent: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
-  htmlContent: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
-});
-
-const sendViaResend = async ({ email, name, otp }) => {
-  if (!isResendConfigured()) {
-    return {
-      delivered: false,
-      message: 'Resend is not configured. Set RESEND_API_KEY.',
-    };
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS);
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(buildResendPayload({ email, name, otp })),
-      signal: controller.signal,
-    });
-
-    const responseText = await response.text();
-    const responseBody = responseText ? (() => {
-      try {
-        return JSON.parse(responseText);
-      } catch {
-        return { raw: responseText };
-      }
-    })() : {};
-    if (!response.ok) {
-      const error = new Error(responseBody.message || `Resend request failed with status ${response.status}`);
-      error.status = response.status;
-      error.responseBody = responseBody;
-      error.responseText = responseText;
-      error.provider = 'resend';
-      error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
-      throw error;
-    }
-
-    return { delivered: true, provider: 'resend', messageId: responseBody.id || null };
-  } catch (error) {
-    if (error && error.name === 'AbortError') {
-      error.code = 'ETIMEDOUT';
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
-
-const sendViaSmtp = async ({ email, name, otp }) => {
-  const { user } = getEmailAuthConfig();
-  if (!user) {
-    return {
-      delivered: false,
-      message: 'SMTP is not configured. Set EMAIL_USER and EMAIL_PASS.',
-    };
-  }
-
-  const transporter = buildTransporter();
-  await withTimeout(transporter.sendMail({
-    from: `${process.env.EMAIL_FROM_NAME || 'Gita Wisdom'} <${user}>`,
-    to: email,
-    subject: 'Your Gita Wisdom OTP Code',
-    text: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
-    html: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
-  }), SMTP_TIMEOUT_MS, 'SMTP send timed out');
-
-  return { delivered: true, provider: 'smtp' };
-};
-
-const withTimeout = (promise, ms, timeoutMessage) => {
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const error = new Error(timeoutMessage || 'Operation timed out');
-      error.code = 'ETIMEDOUT';
-      reject(error);
-    }, ms);
-  });
-
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
-};
-
 const getEmailFailureMessage = (error) => {
-  if (ALLOW_OTP_PREVIEW) {
-    return 'Preview OTP mode is enabled.';
-  }
-
-  const resendValidationMessage = String(error?.responseBody?.message || error?.responseText || '').toLowerCase();
-  const resendSandboxRestricted = error?.provider === 'resend' && (
-    error?.responseBody?.name === 'validation_error' || resendValidationMessage.includes('only send testing emails')
-  );
-
-  const authRejected = error && (
-    error.responseCode === 535 ||
-    (error.code === 'EAUTH' && error.provider !== 'resend')
-  );
+  const authRejected = error && (error.code === 'EAUTH' || error.responseCode === 535);
   const smtpNetworkBlocked = error && (
     error.code === 'ESOCKET' ||
     error.code === 'ENETUNREACH' ||
     error.code === 'ETIMEDOUT' ||
     error.code === 'ECONNREFUSED'
   );
-  const resendRejected = error && (
-    error.provider === 'resend' ||
-    error.code === 'EFAIL'
-  );
-  const brevoRejected = error && error.provider === 'brevo';
 
   if (authRejected) {
     return 'Gmail rejected EMAIL_PASS. Use a Gmail App Password.';
-  }
-
-  if (resendRejected) {
-    if (resendSandboxRestricted) {
-      return 'Resend is in testing mode. OTP can currently be sent only to the account owner email until a domain sender is verified.';
-    }
-
-    const details = error?.responseText
-      ? ` Details: ${error.responseText}`
-      : error?.responseBody && Object.keys(error.responseBody).length
-        ? ` Details: ${JSON.stringify(error.responseBody)}`
-        : '';
-    const status = error?.status ? ` (status ${error.status})` : '';
-    return `Resend API rejected the request${status}. Check RESEND_API_KEY and RESEND_FROM_EMAIL.${details}`;
-  }
-
-  if (brevoRejected) {
-    const details = error?.responseText
-      ? ` Details: ${error.responseText}`
-      : error?.responseBody && Object.keys(error.responseBody).length
-        ? ` Details: ${JSON.stringify(error.responseBody)}`
-        : '';
-    const status = error?.status ? ` (status ${error.status})` : '';
-    return `Brevo API rejected the request${status}. Check BREVO_API_KEY and BREVO_FROM_EMAIL.${details}`;
   }
 
   if (smtpNetworkBlocked) {
@@ -380,126 +183,26 @@ const getEmailFailureMessage = (error) => {
 };
 
 exports.getEmailHealth = async (req, res) => {
-  const provider = resolveEmailProvider();
   const { user } = getEmailAuthConfig();
-
-  if (provider === 'preview') {
-    return res.status(200).json({
-      configured: true,
-      reachable: true,
-      mode: 'preview',
-      provider: 'preview',
-      smtpUser: user || null,
-      message: 'Preview OTP mode is enabled. Codes will be returned in the response.',
-    });
-  }
 
   if (!isEmailTransportConfigured()) {
     return res.status(200).json({
       configured: false,
       reachable: false,
       mode: 'preview',
-      provider: null,
       smtpUser: user || null,
-      message: 'Email service is not configured. Set RESEND_API_KEY or EMAIL_USER and EMAIL_PASS.',
+      message: 'Email service is not configured. Set EMAIL_USER and EMAIL_PASS.',
     });
   }
 
   try {
-    if (provider === 'resend') {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS);
-
-      try {
-        const response = await fetch('https://api.resend.com/domains', {
-          headers: {
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-          },
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          const responseText = await response.text();
-          const responseBody = responseText ? (() => {
-            try {
-              return JSON.parse(responseText);
-            } catch {
-              return { raw: responseText };
-            }
-          })() : {};
-          const error = new Error(responseBody.message || `Resend health check failed with status ${response.status}`);
-          error.status = response.status;
-          error.responseBody = responseBody;
-          error.responseText = responseText;
-          error.provider = 'resend';
-          error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
-          throw error;
-        }
-
-        return res.status(200).json({
-          configured: true,
-          reachable: true,
-          mode: 'live',
-          provider: 'resend',
-          smtpUser: null,
-          message: 'Resend API is reachable. OTP emails should be delivered.',
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    }
-
-    if (provider === 'brevo') {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), BREVO_TIMEOUT_MS);
-
-      try {
-        const response = await fetch('https://api.brevo.com/v3/account', {
-          headers: {
-            'api-key': BREVO_API_KEY,
-          },
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          const responseText = await response.text();
-          const responseBody = responseText ? (() => {
-            try {
-              return JSON.parse(responseText);
-            } catch {
-              return { raw: responseText };
-            }
-          })() : {};
-          const error = new Error(responseBody.message || `Brevo health check failed with status ${response.status}`);
-          error.status = response.status;
-          error.responseBody = responseBody;
-          error.responseText = responseText;
-          error.provider = 'brevo';
-          error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
-          throw error;
-        }
-
-        return res.status(200).json({
-          configured: true,
-          reachable: true,
-          mode: 'live',
-          provider: 'brevo',
-          smtpUser: null,
-          message: 'Brevo API is reachable. OTP emails should be delivered.',
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    }
-
     const transporter = buildTransporter();
-    await withTimeout(transporter.verify(), SMTP_TIMEOUT_MS, 'SMTP verification timed out');
+    await transporter.verify();
 
     return res.status(200).json({
       configured: true,
       reachable: true,
       mode: 'live',
-      provider: 'smtp',
       smtpUser: user,
       message: 'SMTP is reachable. OTP emails should be delivered.',
     });
@@ -508,86 +211,40 @@ exports.getEmailHealth = async (req, res) => {
       configured: true,
       reachable: false,
       mode: 'preview',
-      provider,
       smtpUser: user,
       errorCode: error.code || null,
-      details: error.responseBody || null,
       message: getEmailFailureMessage(error),
     });
   }
 };
 
 const sendOtpEmail = async ({ email, name, otp }) => {
-  if (ALLOW_OTP_PREVIEW) {
-    return { delivered: true, provider: 'preview', previewCode: otp };
-  }
-
   const isConfigured = isEmailTransportConfigured();
   if (!isConfigured) {
     return {
       delivered: false,
-      message: 'Email service is not configured. Set RESEND_API_KEY or EMAIL_USER and EMAIL_PASS.',
+      message: 'Email service is not configured. Set EMAIL_USER and EMAIL_PASS.',
     };
   }
 
-  const providerPreference = resolveEmailProvider();
-  const deliveryPlan = providerPreference === 'resend'
-    ? ['resend', 'brevo', 'smtp']
-    : providerPreference === 'brevo'
-      ? ['brevo', 'resend', 'smtp']
-    : providerPreference === 'smtp'
-      ? ['smtp', 'resend', 'brevo']
-      : ['resend', 'brevo', 'smtp'];
-
-  let lastError = null;
-
-  for (const provider of deliveryPlan) {
-    try {
-      if (provider === 'resend') {
-        const result = await sendViaResend({ email, name, otp });
-        if (result?.delivered) {
-          return result;
-        }
-        lastError = new Error(result?.message || 'Resend delivery failed');
-        lastError.provider = 'resend';
-        lastError.code = 'EFAIL';
-        continue;
-      }
-
-      if (provider === 'brevo') {
-        const result = await sendViaBrevo({ email, name, otp });
-        if (result?.delivered) {
-          return result;
-        }
-        if (result?.message && /not configured/i.test(result.message) && lastError) {
-          continue;
-        }
-        lastError = new Error(result?.message || 'Brevo delivery failed');
-        lastError.provider = 'brevo';
-        lastError.code = 'EFAIL';
-        continue;
-      }
-
-      const result = await sendViaSmtp({ email, name, otp });
-      if (result?.delivered) {
-        return result;
-      }
-      // Keep the richer previous provider error (usually Resend) when SMTP fallback
-      // is unavailable, so callers get actionable upstream diagnostics.
-      if (provider === 'smtp' && result?.message && /not configured/i.test(result.message) && lastError) {
-        continue;
-      }
-      lastError = new Error(result?.message || 'SMTP delivery failed');
-      lastError.code = 'EFAIL';
-    } catch (error) {
-      lastError = error;
-    }
+  // Try to send real email
+  try {
+    const transporter = buildTransporter();
+    const { user } = getEmailAuthConfig();
+    await transporter.sendMail({
+      from: `${process.env.EMAIL_FROM_NAME || 'Gita Wisdom'} <${user}>`,
+      to: email,
+      subject: 'Your Gita Wisdom OTP Code',
+      text: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+      html: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
+    });
+    return { delivered: true };
+  } catch (error) {
+    return {
+      delivered: false,
+      message: getEmailFailureMessage(error),
+    };
   }
-
-  return {
-    delivered: false,
-    message: getEmailFailureMessage(lastError),
-  };
 };
 
 const ensureMockAdminUser = () => {
@@ -726,9 +383,8 @@ exports.registerUser = async (req, res) => {
       resendAvailableAt: now + OTP_RESEND_COOLDOWN_SECONDS * 1000,
     });
 
-    let deliveryResult;
     try {
-      deliveryResult = await sendOtpEmail({ email: safeEmail, name, otp });
+      const deliveryResult = await sendOtpEmail({ email: safeEmail, name, otp });
 
       if (!deliveryResult?.delivered) {
         pendingRegistrations.delete(safeEmail);
@@ -747,11 +403,6 @@ exports.registerUser = async (req, res) => {
       email: safeEmail,
       retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
     };
-
-    if (deliveryResult?.provider === 'preview' && deliveryResult?.previewCode) {
-      response.previewCode = deliveryResult.previewCode;
-      response.message = 'Preview OTP generated. Use the returned code to verify your account.';
-    }
 
     return res.status(200).json(response);
   } catch (error) {
@@ -788,9 +439,8 @@ exports.resendRegistrationOtp = async (req, res) => {
     pending.resendAvailableAt = now + OTP_RESEND_COOLDOWN_SECONDS * 1000;
     pendingRegistrations.set(safeEmail, pending);
 
-    let deliveryResult;
     try {
-      deliveryResult = await sendOtpEmail({ email: safeEmail, name: pending.name, otp });
+      const deliveryResult = await sendOtpEmail({ email: safeEmail, name: pending.name, otp });
 
       if (!deliveryResult?.delivered) {
         return res.status(503).json({ message: deliveryResult?.message || 'Failed to deliver OTP email. Please try again later.' });
@@ -807,11 +457,6 @@ exports.resendRegistrationOtp = async (req, res) => {
       email: safeEmail,
       retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
     };
-
-    if (deliveryResult?.provider === 'preview' && deliveryResult?.previewCode) {
-      response.previewCode = deliveryResult.previewCode;
-      response.message = 'Preview OTP generated. Use the returned code to verify your account.';
-    }
 
     return res.status(200).json(response);
   } catch (error) {
@@ -888,22 +533,6 @@ exports.verifyRegistrationOtp = async (req, res) => {
 
     pendingRegistrations.delete(safeEmail);
 
-    // In-app notification for successful registration (MongoDB only)
-    if (useMongoStore() && user && user._id) {
-      try {
-        await notificationService.sendInApp({
-          userId: user._id,
-          type: 'system',
-          title: 'Welcome to Gita Wisdom!',
-          body: 'Your account was created successfully. Explore divine content and daily wisdom.',
-          data: { event: 'registration' },
-        });
-      } catch (err) {
-        // Log but do not block registration
-        console.warn('Failed to send in-app notification:', err.message);
-      }
-    }
-
     return res.status(201).json({
       id: user.id,
       name: user.name,
@@ -966,18 +595,11 @@ exports.requestPasswordResetOtp = async (req, res) => {
       return res.status(503).json({ message: deliveryResult?.message || 'Failed to deliver OTP email. Please try again later.' });
     }
 
-    const response = {
+    return res.status(200).json({
       message: 'OTP sent to your email',
       email: safeEmail,
       retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
-    };
-
-    if (deliveryResult?.provider === 'preview' && deliveryResult?.previewCode) {
-      response.previewCode = deliveryResult.previewCode;
-      response.message = 'Preview OTP generated. Use the returned code to reset your password.';
-    }
-
-    return res.status(200).json(response);
+    });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -1041,20 +663,6 @@ exports.verifyPasswordResetOtp = async (req, res) => {
 
     target.password = hashedPassword;
     await target.save();
-    // In-app notification for password reset (MongoDB only)
-    if (useMongoStore() && target && target._id) {
-      try {
-        await notificationService.sendInApp({
-          userId: target._id,
-          type: 'system',
-          title: 'Password Changed',
-          body: 'Your Gita Wisdom password was reset successfully. If this was not you, please contact support immediately.',
-          data: { event: 'password-reset' },
-        });
-      } catch (err) {
-        console.warn('Failed to send in-app notification:', err.message);
-      }
-    }
     pendingPasswordResets.delete(safeEmail);
     return res.json({ message: 'Password reset successful' });
   } catch (error) {
@@ -1514,56 +1122,4 @@ module.exports.getUserByIdForAuth = async (id) => {
   return User.findByPk(id, {
     attributes: { exclude: ['password'] },
   });
-};
-
-const sendViaBrevo = async ({ email, name, otp }) => {
-  if (!isBrevoConfigured()) {
-    return {
-      delivered: false,
-      message: 'Brevo is not configured. Set BREVO_API_KEY and BREVO_FROM_EMAIL.',
-    };
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BREVO_TIMEOUT_MS);
-
-  try {
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': BREVO_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(buildBrevoPayload({ email, name, otp })),
-      signal: controller.signal,
-    });
-
-    const responseText = await response.text();
-    const responseBody = responseText ? (() => {
-      try {
-        return JSON.parse(responseText);
-      } catch {
-        return { raw: responseText };
-      }
-    })() : {};
-
-    if (!response.ok) {
-      const error = new Error(responseBody.message || `Brevo request failed with status ${response.status}`);
-      error.status = response.status;
-      error.responseBody = responseBody;
-      error.responseText = responseText;
-      error.provider = 'brevo';
-      error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
-      throw error;
-    }
-
-    return { delivered: true, provider: 'brevo', messageId: responseBody.messageId || null };
-  } catch (error) {
-    if (error && error.name === 'AbortError') {
-      error.code = 'ETIMEDOUT';
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
 };

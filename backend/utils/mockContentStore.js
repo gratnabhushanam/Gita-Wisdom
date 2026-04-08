@@ -40,15 +40,6 @@ const saveStore = () => {
       nextStoryId,
       nextVideoId,
     };
-    // Backup before writing
-    try {
-      const backupPath = STORE_FILE.replace('.json', `_backup_${Date.now()}.json`);
-      if (fs.existsSync(STORE_FILE)) {
-        fs.copyFileSync(STORE_FILE, backupPath);
-      }
-    } catch (e) {
-      // Ignore backup errors
-    }
     fs.writeFileSync(STORE_FILE, JSON.stringify(payload, null, 2), 'utf8');
   } catch {
     // ignore persistence failures

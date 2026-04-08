@@ -22,9 +22,6 @@
 Thumbs.db
 .vscode/
 
-# Backup git metadata
-backend/.git.backup*/
-
 # Python cache (if any)
 **/__pycache__/
 **/*.pyc

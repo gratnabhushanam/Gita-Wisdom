@@ -4,8 +4,6 @@ import { Share2, Bookmark, Volume2, Info, Pause } from 'lucide-react';
 
 export default function Sloka() {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-  const API_KEY = String(import.meta.env.VITE_APP_API_KEY || import.meta.env.VITE_PERMANENT_API_KEY || '').trim();
-  const API_REQUEST_CONFIG = { headers: { 'x-api-key': API_KEY } };
   const [sloka, setSloka] = useState(null);
   const [loading, setLoading] = useState(true);
   const [language, setLanguage] = useState('english');
@@ -184,7 +182,7 @@ export default function Sloka() {
   useEffect(() => {
     const fetchSloka = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/slokas/daily`, API_REQUEST_CONFIG);
+        const response = await axios.get(`${API_BASE_URL}/api/slokas/daily`);
         setSloka(response.data);
         
         const token = localStorage.getItem('token');

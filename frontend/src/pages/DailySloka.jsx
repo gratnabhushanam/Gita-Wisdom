@@ -6,21 +6,16 @@ import { requestNotificationPermission, sendNotification } from '../utils/notifi
 
 export default function DailySloka() {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-  const API_KEY = String(import.meta.env.VITE_APP_API_KEY || import.meta.env.VITE_PERMANENT_API_KEY || '').trim();
   const API_ORIGIN = API_BASE_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8888` : 'http://localhost:8888');
-  const API_REQUEST_CONFIG = { headers: { 'x-api-key': API_KEY } };
   const HISTORY_KEY = 'daily_sloka_history_v1';
   const SAVED_VERSES_KEY = 'daily_saved_verses_v1';
-  const MIN_DAILY_DATE_KEY = '2026-01-01';
   const formatLocalDateKey = (date = new Date()) => {
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const dd = String(date.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   };
-  const getTodayDateKey = () => formatLocalDateKey();
-  const todayDateKey = getTodayDateKey();
-  const defaultDateKey = todayDateKey < MIN_DAILY_DATE_KEY ? MIN_DAILY_DATE_KEY : todayDateKey;
+  const todayDateKey = formatLocalDateKey();
   const [dailySloka, setDailySloka] = useState(null);
   const [loading, setLoading] = useState(true);
   const [language, setLanguage] = useState('english');
@@ -32,7 +27,7 @@ export default function DailySloka() {
   const [savedVerses, setSavedVerses] = useState([]);
   const [saveStatus, setSaveStatus] = useState('');
   const [playbackSource, setPlaybackSource] = useState(null);
-  const [selectedDateKey, setSelectedDateKey] = useState(defaultDateKey);
+  const [selectedDateKey, setSelectedDateKey] = useState(() => formatLocalDateKey());
   const [showCalendar, setShowCalendar] = useState(false);
   const location = useLocation();
   const audioRef = useRef(null);
@@ -91,7 +86,7 @@ export default function DailySloka() {
 
   const loadHistory = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily/history`, API_REQUEST_CONFIG);
+      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily/history`);
       const apiItems = response.data && Array.isArray(response.data.items) ? response.data.items : [];
       if (apiItems.length) {
         setHistory(apiItems);
@@ -127,7 +122,7 @@ export default function DailySloka() {
 
   const saveHistory = async (entry) => {
     try {
-      await axios.post(`${API_BASE_URL}/api/slokas/daily/history`, entry, API_REQUEST_CONFIG);
+      await axios.post(`${API_BASE_URL}/api/slokas/daily/history`, entry);
     } catch (error) {
       console.error('Failed to save daily history to API, using local cache:', error);
     }
@@ -155,19 +150,10 @@ export default function DailySloka() {
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  const clampDateKey = (dateKey) => {
-    const safeDateKey = String(dateKey || '').trim();
-    if (!safeDateKey) return selectedDateKey;
-    const todayKey = getTodayDateKey();
-    if (safeDateKey > todayKey) return todayKey;
-    if (safeDateKey < MIN_DAILY_DATE_KEY) return MIN_DAILY_DATE_KEY;
-    return safeDateKey;
-  };
-
   const fetchDailySloka = async (dateKey = selectedDateKey) => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily?date=${encodeURIComponent(dateKey)}`, API_REQUEST_CONFIG);
+      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily?date=${encodeURIComponent(dateKey)}`);
       const payload = response.data;
       if (hasValidSloka(payload)) {
         setDailySloka(payload);
@@ -193,11 +179,6 @@ export default function DailySloka() {
 
   const openPreviousDay = async () => {
     stopPlayback();
-    if (selectedDateKey <= MIN_DAILY_DATE_KEY) {
-      setSaveStatus('Calendar starts from 2026-01-01');
-      window.setTimeout(() => setSaveStatus(''), 2000);
-      return;
-    }
     const previousDate = shiftDateKey(selectedDateKey, -1);
     setSelectedDateKey(previousDate);
     await fetchDailySloka(previousDate);
@@ -206,24 +187,14 @@ export default function DailySloka() {
   const handleDateSelection = async (event) => {
     const pickedDate = String(event.target.value || '').trim();
     if (!pickedDate) return;
-    const todayKey = getTodayDateKey();
-    if (pickedDate > todayKey) {
+    if (pickedDate > todayDateKey) {
       setSaveStatus('Future dates are disabled');
       window.setTimeout(() => setSaveStatus(''), 2000);
+      return;
     }
-    if (pickedDate < MIN_DAILY_DATE_KEY) {
-      setSaveStatus('Calendar starts from 2026-01-01');
-      window.setTimeout(() => setSaveStatus(''), 2000);
-    }
-
-    const normalizedDate = clampDateKey(pickedDate);
-    if (normalizedDate !== pickedDate) {
-      event.target.value = normalizedDate;
-    }
-
     stopPlayback();
-    setSelectedDateKey(normalizedDate);
-    await fetchDailySloka(normalizedDate);
+    setSelectedDateKey(pickedDate);
+    await fetchDailySloka(pickedDate);
   };
 
   const checkNotificationStatus = async () => {
@@ -530,8 +501,7 @@ export default function DailySloka() {
                 <input
                   type="date"
                   value={selectedDateKey}
-                  min={MIN_DAILY_DATE_KEY}
-                  max={getTodayDateKey()}
+                  max={todayDateKey}
                   onChange={handleDateSelection}
                   className="bg-transparent text-white text-xs font-bold outline-none px-2 py-1 rounded border border-devotion-gold/40 hover:border-devotion-gold/70 focus:border-devotion-gold transition-all"
                   aria-label="Choose daily sloka date"

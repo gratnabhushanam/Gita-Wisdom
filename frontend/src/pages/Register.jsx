@@ -73,11 +73,6 @@ export default function Register() {
 
     try {
       const response = await register(formData.name, formData.email, formData.password);
-      // After registration, redirect to login or homepage as per flow
-      navigate('/login', { replace: true });
-      // If you want auto-login after register, use:
-      // await login(formData.email, formData.password);
-      // navigate('/', { replace: true });
       const pendingRegistration = {
         name: formData.name,
         email: response.email || formData.email,

@@ -8,7 +8,6 @@ export default function Videos() {
   const location = useLocation();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [activeVideo, setActiveVideo] = useState(null);
   const [selectedCollection, setSelectedCollection] = useState('all');
 
@@ -17,12 +16,8 @@ export default function Videos() {
       try {
         const { data } = await axios.get('/api/videos');
         setVideos(data);
-        if (!data || data.length === 0) {
-          setError('No videos found. Please check back later or upload new content.');
-        }
-      } catch (err) {
-        setError('Failed to load videos. Please try again later.');
-        console.error('Error fetching videos:', err);
+      } catch (error) {
+        console.error('Error fetching videos:', error);
       } finally {
         setLoading(false);
       }
@@ -61,10 +56,6 @@ export default function Videos() {
           <div className="flex justify-center flex-col items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-yellow-500 mb-4"></div>
             <p className="text-yellow-500 animate-pulse">Loading Devotional Videos...</p>
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center h-64">
-            <p className="text-red-400 text-lg font-bold mb-2">{error}</p>
           </div>
         ) : (
           <>

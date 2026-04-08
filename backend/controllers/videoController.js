@@ -1,64 +1,3 @@
-// --- HLS DRM Token Endpoint ---
-const jwt = require('jsonwebtoken');
-
-// Issue a signed HLS playback token (JWT) for a given video
-exports.getHlsToken = (req, res) => {
-  const { videoId } = req.query;
-  if (!videoId) return res.status(400).json({ message: 'videoId required' });
-  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
-
-  // Only allow for authenticated users (add more checks as needed)
-  const payload = {
-    sub: req.user.id || req.user._id,
-    videoId,
-    exp: Math.floor(Date.now() / 1000) + 60 * 30, // 30 min expiry
-  };
-  const token = jwt.sign(payload, process.env.HLS_JWT_SECRET || 'supersecret');
-  res.json({ token });
-};
-// Bulk moderate user reels (admin only)
-exports.bulkModerateUserReels = async (req, res) => {
-  try {
-    const { ids, status } = req.body;
-    if (!Array.isArray(ids) || !status) {
-      return res.status(400).json({ message: 'ids (array) and status are required' });
-    }
-    const allowed = ['approved', 'rejected', 'pending'];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ message: 'Invalid moderation status' });
-    }
-    if (status === 'rejected' && !String(req.body.note || '').trim()) {
-      return res.status(400).json({ message: 'Rejection note is required' });
-    }
-    let results = [];
-    for (const id of ids) {
-      let reel;
-      if (isMockMode()) {
-        const reels = mockContentStore.listVideos();
-        reel = reels.find((item) => String(item.id) === String(id) && Boolean(item.isUserReel));
-        if (!reel) continue;
-        reel.moderationStatus = status;
-        reel.moderationNote = req.body.note || '';
-        reel.reviewedBy = req.user.id;
-        reel.updatedAt = new Date().toISOString();
-        results.push(mapVideo(reel));
-      } else {
-        reel = useMongoStore()
-          ? await VideoMongo.findOne({ _id: String(id), isUserReel: true })
-          : await Video.findOne({ where: { id, isUserReel: true } });
-        if (!reel) continue;
-        reel.moderationStatus = status;
-        reel.moderationNote = req.body.note || '';
-        reel.reviewedBy = req.user.id;
-        await reel.save();
-        results.push(mapVideo(reel));
-      }
-    }
-    return res.json({ updated: results.length, results });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
-};
 const { Video, User } = require('../models');
 const mongoose = require('mongoose');
 const VideoMongo = require('../models/mongo/VideoMongo');
@@ -67,8 +6,6 @@ const mockContentStore = require('../utils/mockContentStore');
 const { isMockMode } = require('./authController');
 const fs = require('fs');
 const { getVideoDurationSeconds } = require('../utils/videoMetadata');
-const { transcodeToHLS } = require('../utils/hlsTranscoder');
-const path = require('path');
 
 const MAX_REEL_DURATION_SECONDS = 90;
 
@@ -272,35 +209,12 @@ exports.uploadUserReel = async (req, res) => {
     const normalizedTags = normalizeTags(tags);
     const uploadedFile = req.file;
     const videoUrl = uploadedFile?.filename ? buildUploadedVideoUrl(req, uploadedFile.filename) : '';
-    let hlsUrl = '';
-
-    // HLS transcoding (async, non-blocking for now)
-    if (uploadedFile?.path) {
-      const hlsOutputDir = path.join(__dirname, '..', 'uploads', 'hls', path.parse(uploadedFile.filename).name);
-      const baseName = 'playlist';
-      transcodeToHLS(
-        uploadedFile.path,
-        hlsOutputDir,
-        baseName,
-        (err, masterPlaylistPath) => {
-          if (!err && masterPlaylistPath) {
-            console.log('Multi-res HLS transcoded:', masterPlaylistPath);
-          } else if (err) {
-            console.error('HLS transcoding failed:', err);
-          }
-        }
-      );
-      // HLS master playlist URL for client
-      hlsUrl = `${getPublicBaseUrl(req)}/uploads/hls/${path.parse(uploadedFile.filename).name}/playlist_master.m3u8`;
-    }
-
 
     if (!title || !videoUrl) {
       return res.status(400).json({ message: 'Title and video file are required' });
     }
 
     const duration = await getVideoDurationSeconds(uploadedFile.path);
-
     if (duration > MAX_REEL_DURATION_SECONDS) {
       fs.unlink(uploadedFile.path, () => {});
       return res.status(400).json({ message: `Reel must be ${MAX_REEL_DURATION_SECONDS} seconds or less` });
@@ -319,12 +233,10 @@ exports.uploadUserReel = async (req, res) => {
 
     const moderationStatus = isAdminUploader ? 'approved' : 'pending';
 
-
     if (isMockMode()) {
       const newReel = mockContentStore.addVideo({
         title,
         videoUrl,
-        hlsUrl,
         description,
         tags: normalizedTags,
         category: 'reels',
@@ -342,12 +254,10 @@ exports.uploadUserReel = async (req, res) => {
       return res.status(201).json(mapVideo(newReel));
     }
 
-
     if (useMongoStore()) {
       const newReel = await VideoMongo.create({
         title,
         videoUrl,
-        hlsUrl,
         description,
         tags: normalizedTags,
         category: 'reels',
@@ -373,7 +283,6 @@ exports.uploadUserReel = async (req, res) => {
     const newReel = await Video.create({
       title,
       videoUrl,
-      hlsUrl,
       description,
       tags: normalizedTags,
       category: 'reels',

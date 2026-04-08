@@ -1,4 +1,3 @@
-import { resumableUpload } from '../utils/resumableUpload';
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Upload, FileText, Tag, Check, ArrowLeft, Sparkles } from 'lucide-react';
@@ -90,31 +89,32 @@ export default function UploadReel() {
       alert('Please select a video file to upload.');
       return;
     }
+
     setLoading(true);
     setUploadProgress(0);
     try {
       const token = localStorage.getItem('token');
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        'video-title': formData.title,
-        'video-description': formData.description,
-        'video-tags': formData.tags,
-        'video-kids': 'false',
-        'video-collection': 'Reels',
-        'video-category': 'reels',
-      };
-      const result = await resumableUpload({
-        file: videoFile,
-        url: '/api/videos/upload/resumable',
-        headers,
-        onProgress: setUploadProgress,
+      const payload = new FormData();
+      payload.append('title', formData.title);
+      payload.append('description', formData.description);
+      payload.append('contentType', 'spiritual');
+      payload.append('tags', formData.tags);
+      payload.append('video', videoFile);
+
+      const { data } = await axios.post('/api/videos/user-reels', payload, {
+        headers: { Authorization: `Bearer ${token}` },
+        onUploadProgress: (event) => {
+          if (!event.total) return;
+          const percent = Math.min(100, Math.round((event.loaded * 100) / event.total));
+          setUploadProgress(percent);
+        },
       });
-      setStatusMessage(result?.message || 'Uploaded successfully');
+      setStatusMessage(data?.message || 'Uploaded successfully');
       setSuccess(true);
       setTimeout(() => navigate('/reels'), 2000);
     } catch (error) {
       console.error('Error uploading reel:', error);
-      alert(error.message || 'Upload failed. Only spiritual content is allowed.');
+      alert(error.response?.data?.message || 'Upload failed. Only spiritual content is allowed.');
     } finally {
       setLoading(false);
       setTimeout(() => setUploadProgress(0), 700);

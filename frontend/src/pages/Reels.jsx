@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-// Krishna-themed SVG asset for floating animation
-const FLOATING_KRISHNA = '/krishna-floating.svg';
 import axios from 'axios';
-import KrishnaSVG from '../assets/krishna-scene.svg';
 import { Music, PlusCircle, Bookmark, Volume2, VolumeX, Play, Pause } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-import MediaPlayerHLS from '../components/MediaPlayerHLS';
+import MediaPlayer from '../components/MediaPlayer';
 import { useAuth } from '../context/AuthContext';
 
 const REELS_BACKGROUND_SCENES = [
@@ -22,7 +19,6 @@ export default function Reels() {
   const [reels, setReels] = useState([]);
   const [pendingReels, setPendingReels] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [commentInputs, setCommentInputs] = useState({});
   const [submittingCommentId, setSubmittingCommentId] = useState(null);
   const [moderatingId, setModeratingId] = useState(null);
@@ -50,27 +46,12 @@ export default function Reels() {
   const canViewCommenterProfile = (reel) => Boolean(user?.role === 'admin' || isReelOwner(reel));
 
   useEffect(() => {
-    // Fetch reels and pending moderation reels
     const fetchReels = async () => {
       try {
         const [curatedResponse, userReelsResponse] = await Promise.all([
-          axios.get('/api/videos/reels').catch((err) => err.response || err),
-          axios.get('/api/videos/user-reels').catch((err) => err.response || err),
+          axios.get('/api/videos/reels'),
+          axios.get('/api/videos/user-reels'),
         ]);
-
-        // Detect if either response is a login page (HTML) or 401/403
-        const isAuthError = (resp) => {
-          if (!resp) return true;
-          if (resp.status === 401 || resp.status === 403) return true;
-          if (typeof resp.data === 'string' && resp.data.includes('<form') && resp.data.includes('SIGN IN')) return true;
-          return false;
-        };
-
-        if (isAuthError(curatedResponse) || isAuthError(userReelsResponse)) {
-          setError('You must be logged in to view reels. Please sign in.');
-          setReels([]);
-          return;
-        }
 
         const safeUserReels = (userReelsResponse.data || []).filter(
           (reel) =>
@@ -81,12 +62,8 @@ export default function Reels() {
 
         const mergedReels = [...safeUserReels, ...(curatedResponse.data || [])];
         setReels(mergedReels);
-        if (mergedReels.length === 0) {
-          setError('No reels found. Please check back later or upload new content.');
-        }
-      } catch (err) {
-        setError('Failed to load reels. Please try again later.');
-        console.error('Error fetching reels:', err);
+      } catch (error) {
+        console.error('Error fetching reels:', error);
       } finally {
         setLoading(false);
       }
@@ -97,20 +74,22 @@ export default function Reels() {
         setPendingReels([]);
         return;
       }
+
       try {
-        const response = await axios.get('/api/videos/user-reels?status=pending');
+        const token = localStorage.getItem('token');
+        const response = await axios.get('/api/videos/user-reels/moderation?status=pending', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setPendingReels(response.data || []);
-      } catch (err) {
-        setPendingReels([]);
+      } catch (error) {
+        console.error('Error loading moderation queue:', error);
       }
     };
 
     fetchReels();
     fetchPendingModeration();
-    // eslint-disable-next-line
   }, [user?.role]);
 
-  // Sound preference effect
   useEffect(() => {
     try {
       const raw = localStorage.getItem(REELS_SOUND_PREF_KEY);
@@ -121,6 +100,7 @@ export default function Reels() {
           const narrowViewport = window.innerWidth <= 768;
           return touchDevice || narrowViewport;
         })();
+
         setSoundEnabled(!isLikelyMobile);
         return;
       }
@@ -154,7 +134,7 @@ export default function Reels() {
       console.error('Failed to load saved reels:', error);
       setSavedReelMap({});
     }
-  }, [location?.state?.focusReelId, reels]);
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!reels.length) {
@@ -289,6 +269,7 @@ export default function Reels() {
         prev.map((item) => {
           const itemId = item._id || item.id;
           if (itemId !== reelId) return item;
+
           const nextComments = [
             {
               id: Date.now(),
@@ -300,6 +281,7 @@ export default function Reels() {
             },
             ...(Array.isArray(item.comments) ? item.comments : []),
           ];
+
           return {
             ...item,
             comments: nextComments,
@@ -443,21 +425,8 @@ export default function Reels() {
     </div>
   );
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-center px-4">
-        <div className="text-2xl font-bold text-yellow-400 mb-4">{error}</div>
-        {error.includes('login') || error.includes('sign in') ? (
-          <Link to="/login" className="px-6 py-3 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 text-black font-bold text-lg shadow-lg hover:scale-105 transition-transform">Go to Login</Link>
-        ) : null}
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen text-white flex justify-center overflow-hidden relative">
-      {/* Cinematic Krishna SVG background */}
-      <img src={KrishnaSVG} alt="Krishna Scene" className="w-full max-w-xs absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none select-none opacity-70" style={{zIndex:1}} />
       {REELS_BACKGROUND_SCENES.map((image, index) => (
         <div
           key={image}
@@ -485,12 +454,12 @@ export default function Reels() {
                       className="flex-1 py-2 rounded-xl bg-green-500/20 border border-green-500/40 text-green-300 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
                     >
                       Approve
-                    <button
-                      className="absolute top-2 right-2 bg-devotion-gold text-white rounded-full p-2 shadow-md hover:bg-yellow-500 transition btn-ripple btn-glow btn-scale min-h-[44px] min-w-[44px]"
-                      onClick={handleLike}
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7" /></svg>
                     </button>
+                    <button
+                      onClick={() => handleModeration(pendingId, 'rejected')}
+                      disabled={moderatingId === pendingId}
+                      className="flex-1 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                    >
                       Reject
                     </button>
                   </div>
@@ -517,41 +486,23 @@ export default function Reels() {
           const isPausedByTap = pausedReelId === reelId;
           const shouldPlay = isActive && !isPausedByTap;
 
-
-          // Handler for auto-play next reel
-          const handleVideoEnd = () => {
-            const idx = reels.findIndex(r => String(r._id || r.id) === reelId);
-            if (idx !== -1 && idx < reels.length - 1) {
-              const nextId = String(reels[idx + 1]._id || reels[idx + 1].id);
-              setActiveReelId(nextId);
-              setPausedReelId('');
-              // Scroll to next reel
-              const container = reelsFeedRef.current;
-              if (container && container.children[idx + 1]) {
-                container.children[idx + 1].scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }
-            }
-          };
-
           return (
           <div key={reel._id || reel.id} className="h-screen w-full relative snap-center flex flex-col pt-20 pb-4 justify-end">
 
             {/* Background Video (single active playback only) */}
             <div className="absolute inset-0 z-0">
                <div className="w-full h-full bg-gradient-to-t from-black/80 via-transparent to-black/20 absolute z-10 pointer-events-none"></div>
-               <MediaPlayerHLS
+               <MediaPlayer
                  key={`${reelId}-${isActive ? 'active' : 'inactive'}-${shouldPlay ? 'play' : 'pause'}-${soundEnabled ? 'sound' : 'mute'}`}
                  url={reel.videoUrl || reel.youtubeUrl || reel.url}
-                 hlsUrl={reel.hlsUrl}
                  title={reel.title}
                  className="w-full h-full object-cover"
                  youtubeParams={`autoplay=${shouldPlay ? 1 : 0}&mute=${shouldPlay && soundEnabled ? 0 : 1}&controls=1&loop=1&playsinline=1`}
                  autoPlay={shouldPlay}
                  shouldPlay={shouldPlay}
                  muted={!shouldPlay || !soundEnabled}
-                 loop={false}
+                 loop
                  controls={isActive}
-                 onEnded={handleVideoEnd}
                />
             </div>
 
@@ -567,8 +518,6 @@ export default function Reels() {
               onClick={() => setSoundEnabled((prev) => !prev)}
               className={`absolute top-24 right-4 z-[25] w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition-transform hover:scale-105 ${soundEnabled ? 'bg-[#D39A4A]/35 border-[#E6C38A]/60 text-[#E6C38A]' : 'bg-black/45 border-white/30 text-white'}`}
               aria-label={soundEnabled ? 'Turn sound off' : 'Turn sound on'}
-              tabIndex={0}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSoundEnabled((prev) => !prev); }}
             >
               {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
             </button>
