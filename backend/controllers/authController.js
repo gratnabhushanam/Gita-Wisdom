@@ -154,13 +154,31 @@ const isEmailTransportConfigured = () => {
   return Boolean(user && pass);
 };
 
+const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 12000);
+
 const buildTransporter = () => nodemailer.createTransport({
   service: 'gmail',
+  connectionTimeout: SMTP_TIMEOUT_MS,
+  greetingTimeout: SMTP_TIMEOUT_MS,
+  socketTimeout: SMTP_TIMEOUT_MS,
   auth: {
     user: getEmailAuthConfig().user,
     pass: getEmailAuthConfig().pass,
   },
 });
+
+const withTimeout = (promise, ms, timeoutMessage) => {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(timeoutMessage || 'Operation timed out');
+      error.code = 'ETIMEDOUT';
+      reject(error);
+    }, ms);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+};
 
 const getEmailFailureMessage = (error) => {
   const authRejected = error && (error.code === 'EAUTH' || error.responseCode === 535);
@@ -197,7 +215,7 @@ exports.getEmailHealth = async (req, res) => {
 
   try {
     const transporter = buildTransporter();
-    await transporter.verify();
+    await withTimeout(transporter.verify(), SMTP_TIMEOUT_MS, 'SMTP verification timed out');
 
     return res.status(200).json({
       configured: true,
@@ -231,13 +249,13 @@ const sendOtpEmail = async ({ email, name, otp }) => {
   try {
     const transporter = buildTransporter();
     const { user } = getEmailAuthConfig();
-    await transporter.sendMail({
+    await withTimeout(transporter.sendMail({
       from: `${process.env.EMAIL_FROM_NAME || 'Gita Wisdom'} <${user}>`,
       to: email,
       subject: 'Your Gita Wisdom OTP Code',
       text: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
       html: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
-    });
+    }), SMTP_TIMEOUT_MS, 'SMTP send timed out');
     return { delivered: true };
   } catch (error) {
     return {
