@@ -6,7 +6,9 @@ import MediaPlayer from '../components/MediaPlayer';
 
 export default function Mentor() {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const API_KEY = String(import.meta.env.VITE_APP_API_KEY || '').trim();
   const API_ORIGIN = API_BASE_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8888` : 'http://localhost:8888');
+  const API_REQUEST_CONFIG = API_KEY ? { headers: { 'x-api-key': API_KEY } } : undefined;
   const HISTORY_KEY = 'mentor_history_v1';
   const SAVED_VERSES_KEY = 'mentor_saved_verses_v1';
   const [selectedProblem, setSelectedProblem] = useState(null);
@@ -37,7 +39,7 @@ export default function Mentor() {
 
   const loadMentorHistory = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/slokas/mentor/history`);
+      const response = await axios.get(`${API_BASE_URL}/api/slokas/mentor/history`, API_REQUEST_CONFIG);
       const apiItems = response.data && Array.isArray(response.data.items) ? response.data.items : [];
       if (apiItems.length) {
         setMentorHistory(apiItems);
@@ -60,7 +62,7 @@ export default function Mentor() {
 
   const saveMentorHistory = async (entry) => {
     try {
-      await axios.post(`${API_BASE_URL}/api/slokas/mentor/history`, entry);
+      await axios.post(`${API_BASE_URL}/api/slokas/mentor/history`, entry, API_REQUEST_CONFIG);
     } catch (error) {
       console.error('Failed to save mentor history to API, using local cache:', error);
     }
@@ -126,7 +128,7 @@ export default function Mentor() {
     setAudio(null);
     
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/slokas/mentor?problem=${problemId}`);
+      const response = await axios.get(`${API_BASE_URL}/api/slokas/mentor?problem=${problemId}`, API_REQUEST_CONFIG);
       if (hasValidSloka(response.data)) {
         setSolution(response.data);
         await saveMentorHistory({
@@ -145,7 +147,7 @@ export default function Mentor() {
     }
     
     try {
-      const contentResponse = await axios.get(`${API_BASE_URL}/api/slokas/mentor/content?problem=${problemId}`);
+      const contentResponse = await axios.get(`${API_BASE_URL}/api/slokas/mentor/content?problem=${problemId}`, API_REQUEST_CONFIG);
       setRelatedContent({
         slokas: contentResponse.data.slokas || [],
         stories: contentResponse.data.stories || [],

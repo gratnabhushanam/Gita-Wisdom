@@ -6,7 +6,9 @@ import { requestNotificationPermission, sendNotification } from '../utils/notifi
 
 export default function DailySloka() {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const API_KEY = String(import.meta.env.VITE_APP_API_KEY || '').trim();
   const API_ORIGIN = API_BASE_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8888` : 'http://localhost:8888');
+  const API_REQUEST_CONFIG = API_KEY ? { headers: { 'x-api-key': API_KEY } } : undefined;
   const HISTORY_KEY = 'daily_sloka_history_v1';
   const SAVED_VERSES_KEY = 'daily_saved_verses_v1';
   const formatLocalDateKey = (date = new Date()) => {
@@ -86,7 +88,7 @@ export default function DailySloka() {
 
   const loadHistory = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily/history`);
+      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily/history`, API_REQUEST_CONFIG);
       const apiItems = response.data && Array.isArray(response.data.items) ? response.data.items : [];
       if (apiItems.length) {
         setHistory(apiItems);
@@ -122,7 +124,7 @@ export default function DailySloka() {
 
   const saveHistory = async (entry) => {
     try {
-      await axios.post(`${API_BASE_URL}/api/slokas/daily/history`, entry);
+      await axios.post(`${API_BASE_URL}/api/slokas/daily/history`, entry, API_REQUEST_CONFIG);
     } catch (error) {
       console.error('Failed to save daily history to API, using local cache:', error);
     }
@@ -153,7 +155,7 @@ export default function DailySloka() {
   const fetchDailySloka = async (dateKey = selectedDateKey) => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily?date=${encodeURIComponent(dateKey)}`);
+      const response = await axios.get(`${API_BASE_URL}/api/slokas/daily?date=${encodeURIComponent(dateKey)}`, API_REQUEST_CONFIG);
       const payload = response.data;
       if (hasValidSloka(payload)) {
         setDailySloka(payload);
