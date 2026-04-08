@@ -72,6 +72,19 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+if (isProduction) {
+  app.use((req, res, next) => {
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
+    const isSecure = req.secure || forwardedProto.includes('https');
+    if (isSecure) {
+      return next();
+    }
+    const host = req.get('host');
+    return res.redirect(301, `https://${host}${req.originalUrl}`);
+  });
+}
+
 app.use(createRateLimiter({
   windowMs: 15 * 60 * 1000,
   maxRequests: 300,
@@ -131,7 +144,7 @@ const startServer = async () => {
       console.log(`Server running on port ${PORT}`);
     });
 
-    if (String(LEGACY_PORT) !== String(PORT)) {
+    if (!isProduction && String(LEGACY_PORT) !== String(PORT)) {
       app.listen(LEGACY_PORT, '0.0.0.0', () => {
         console.log(`Legacy compatibility port running on ${LEGACY_PORT}`);
       });
