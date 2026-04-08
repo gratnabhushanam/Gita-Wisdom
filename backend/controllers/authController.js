@@ -143,21 +143,41 @@ const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
 const getOtpExpiryTime = () => Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000;
 
+const EMAIL_PROVIDER = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
+const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev').trim();
+const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Gita Wisdom').trim();
+
 const getEmailAuthConfig = () => {
   const user = String(process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
   const pass = String(process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
   return { user, pass };
 };
 
+const isResendConfigured = () => Boolean(RESEND_API_KEY);
+
 const isEmailTransportConfigured = () => {
   const { user, pass } = getEmailAuthConfig();
-  return Boolean(user && pass);
+  return isResendConfigured() || Boolean(user && pass);
+};
+
+const resolveEmailProvider = () => {
+  if (EMAIL_PROVIDER === 'resend' || EMAIL_PROVIDER === 'smtp') {
+    return EMAIL_PROVIDER;
+  }
+
+  if (isResendConfigured()) {
+    return 'resend';
+  }
+
+  return 'smtp';
 };
 
 const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 12000);
 const SMTP_HOST = String(process.env.SMTP_HOST || 'smtp.gmail.com').trim();
 const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || (SMTP_PORT === 465 ? 'true' : 'false')).toLowerCase() === 'true';
+const RESEND_TIMEOUT_MS = Number(process.env.RESEND_TIMEOUT_MS || 12000);
 
 const buildTransporter = () => nodemailer.createTransport({
   host: SMTP_HOST,
@@ -171,6 +191,54 @@ const buildTransporter = () => nodemailer.createTransport({
     pass: getEmailAuthConfig().pass,
   },
 });
+
+const buildResendPayload = ({ email, name, otp }) => ({
+  from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
+  to: [email],
+  subject: 'Your Gita Wisdom OTP Code',
+  text: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+  html: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
+});
+
+const sendViaResend = async ({ email, name, otp }) => {
+  if (!isResendConfigured()) {
+    return {
+      delivered: false,
+      message: 'Resend is not configured. Set RESEND_API_KEY.',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS);
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildResendPayload({ email, name, otp })),
+      signal: controller.signal,
+    });
+
+    const responseBody = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(responseBody.message || `Resend request failed with status ${response.status}`);
+      error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
+      throw error;
+    }
+
+    return { delivered: true, provider: 'resend', messageId: responseBody.id || null };
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      error.code = 'ETIMEDOUT';
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 const withTimeout = (promise, ms, timeoutMessage) => {
   let timeoutId;
@@ -193,9 +261,14 @@ const getEmailFailureMessage = (error) => {
     error.code === 'ETIMEDOUT' ||
     error.code === 'ECONNREFUSED'
   );
+  const resendRejected = error && (error.code === 'EAUTH' || error.code === 'EFAIL');
 
   if (authRejected) {
     return 'Gmail rejected EMAIL_PASS. Use a Gmail App Password.';
+  }
+
+  if (resendRejected) {
+    return 'Resend API rejected the request. Check RESEND_API_KEY and RESEND_FROM_EMAIL.';
   }
 
   if (smtpNetworkBlocked) {
@@ -206,6 +279,7 @@ const getEmailFailureMessage = (error) => {
 };
 
 exports.getEmailHealth = async (req, res) => {
+  const provider = resolveEmailProvider();
   const { user } = getEmailAuthConfig();
 
   if (!isEmailTransportConfigured()) {
@@ -213,12 +287,44 @@ exports.getEmailHealth = async (req, res) => {
       configured: false,
       reachable: false,
       mode: 'preview',
+      provider: null,
       smtpUser: user || null,
-      message: 'Email service is not configured. Set EMAIL_USER and EMAIL_PASS.',
+      message: 'Email service is not configured. Set RESEND_API_KEY or EMAIL_USER and EMAIL_PASS.',
     });
   }
 
   try {
+    if (provider === 'resend') {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS);
+
+      try {
+        const response = await fetch('https://api.resend.com/domains', {
+          headers: {
+            Authorization: `Bearer ${RESEND_API_KEY}`,
+          },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const error = new Error(`Resend health check failed with status ${response.status}`);
+          error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
+          throw error;
+        }
+
+        return res.status(200).json({
+          configured: true,
+          reachable: true,
+          mode: 'live',
+          provider: 'resend',
+          smtpUser: null,
+          message: 'Resend API is reachable. OTP emails should be delivered.',
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
     const transporter = buildTransporter();
     await withTimeout(transporter.verify(), SMTP_TIMEOUT_MS, 'SMTP verification timed out');
 
@@ -226,6 +332,7 @@ exports.getEmailHealth = async (req, res) => {
       configured: true,
       reachable: true,
       mode: 'live',
+      provider: 'smtp',
       smtpUser: user,
       message: 'SMTP is reachable. OTP emails should be delivered.',
     });
@@ -234,6 +341,7 @@ exports.getEmailHealth = async (req, res) => {
       configured: true,
       reachable: false,
       mode: 'preview',
+      provider,
       smtpUser: user,
       errorCode: error.code || null,
       message: getEmailFailureMessage(error),
@@ -246,12 +354,18 @@ const sendOtpEmail = async ({ email, name, otp }) => {
   if (!isConfigured) {
     return {
       delivered: false,
-      message: 'Email service is not configured. Set EMAIL_USER and EMAIL_PASS.',
+      message: 'Email service is not configured. Set RESEND_API_KEY or EMAIL_USER and EMAIL_PASS.',
     };
   }
 
   // Try to send real email
   try {
+    const provider = resolveEmailProvider();
+
+    if (provider === 'resend') {
+      return await sendViaResend({ email, name, otp });
+    }
+
     const transporter = buildTransporter();
     const { user } = getEmailAuthConfig();
     await withTimeout(transporter.sendMail({
@@ -261,7 +375,7 @@ const sendOtpEmail = async ({ email, name, otp }) => {
       text: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
       html: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
     }), SMTP_TIMEOUT_MS, 'SMTP send timed out');
-    return { delivered: true };
+    return { delivered: true, provider: 'smtp' };
   } catch (error) {
     return {
       delivered: false,

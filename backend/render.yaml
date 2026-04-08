@@ -42,3 +42,9 @@ services:
         sync: false
       - key: EMAIL_FROM_NAME
         value: Gita Wisdom
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: onboarding@resend.dev
+      - key: RESEND_FROM_NAME
+        value: Gita Wisdom
