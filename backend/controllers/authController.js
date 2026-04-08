@@ -155,9 +155,14 @@ const isEmailTransportConfigured = () => {
 };
 
 const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 12000);
+const SMTP_HOST = String(process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || (SMTP_PORT === 465 ? 'true' : 'false')).toLowerCase() === 'true';
 
 const buildTransporter = () => nodemailer.createTransport({
-  service: 'gmail',
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_SECURE,
   connectionTimeout: SMTP_TIMEOUT_MS,
   greetingTimeout: SMTP_TIMEOUT_MS,
   socketTimeout: SMTP_TIMEOUT_MS,
