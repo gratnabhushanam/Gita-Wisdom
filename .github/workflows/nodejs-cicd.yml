@@ -1,0 +1,47 @@
+# GitHub Actions workflow for Node.js CI/CD
+# This workflow will build, test, and deploy your app on every push to main
+
+name: Node.js CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: Install dependencies (frontend)
+        run: |
+          cd frontend
+          npm install
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Install dependencies (backend)
+        run: |
+          cd backend
+          npm install
+
+      # Add your test steps here if you have tests
+      # - name: Run tests
+      #   run: npm test
+
+      # Deployment to Vercel and Render is handled by their GitHub integration
+      # No manual deploy step needed unless you want to use CLI/API
+
+      - name: Done
+        run: echo "CI/CD pipeline completed. Deployments handled by Vercel/Render integrations."
