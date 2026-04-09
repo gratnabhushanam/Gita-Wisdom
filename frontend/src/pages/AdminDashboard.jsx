@@ -42,6 +42,16 @@ export default function AdminDashboard() {
     tags: '',
   });
   const [videoForm, setVideoForm] = useState({ title: '', description: '', videoUrl: '', category: 'reels', collectionTitle: 'Bhagavad Gita', isKids: false, tags: '' });
+  // Quiz builder state for video upload
+  const [videoQuizList, setVideoQuizList] = useState([]);
+  const [videoQuizDraft, setVideoQuizDraft] = useState({
+    questionText: '',
+    optionA: '',
+    optionB: '',
+    optionC: '',
+    optionD: '',
+    correctOption: 'A',
+  });
   const [videosUploadType, setVideosUploadType] = useState('video');
   const [quizForm, setQuizForm] = useState({
     questionText: '',
@@ -183,13 +193,38 @@ export default function AdminDashboard() {
             collectionTitle: String(videoForm.collectionTitle || '').trim() || 'Bhagavad Gita',
             tags: videoForm.tags.split(',').map(tag => tag.trim()),
           };
+          // If quizzes were added, send them in a separate request after video upload
         }
       }
+
 
       if (activeTab === 'stories' && editingStoryId) {
         await axios.patch(endpoint, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
+      } else if (activeTab === 'videos' && videosUploadType === 'video') {
+        // 1. Upload video
+        const videoRes = await axios.post(endpoint, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const videoId = videoRes?.data?._id || videoRes?.data?.id || videoRes?.data?.videoId || null;
+        // 2. Upload quizzes if any
+        if (videoQuizList.length > 0 && videoId) {
+          for (const quiz of videoQuizList) {
+            const quizPayload = {
+              questionText: quiz.questionText,
+              category: videoForm.collectionTitle || 'Gita Challenge',
+              videoUrl: videoForm.videoUrl,
+              options: ['A', 'B', 'C', 'D']
+                .map((key) => ({ answerText: String(quiz[`option${key}`] || '').trim(), isCorrect: quiz.correctOption === key }))
+                .filter((item) => item.answerText),
+              videoId,
+            };
+            await axios.post('/api/quiz/questions', quizPayload, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+          }
+        }
       } else {
         await axios.post(endpoint, payload, {
           headers: { Authorization: `Bearer ${token}` }
@@ -199,6 +234,7 @@ export default function AdminDashboard() {
       setMessage({ type: 'success', text: activeTab === 'stories' && editingStoryId ? 'Story updated successfully!' : `${publishLabel} published successfully!` });
       setShowAddModal(false);
       resetForms();
+      setVideoQuizList([]);
       await fetchAdminData();
     } catch (error) {
       setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to publish content' });
@@ -962,6 +998,7 @@ export default function AdminDashboard() {
 
                  {/* VIDEO FORM */}
                  {activeTab === 'videos' && videosUploadType === 'video' && (
+                   <>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                       <div className="space-y-4">
                          <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Video Title</label>
@@ -1035,6 +1072,65 @@ export default function AdminDashboard() {
                          <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold">Show in Kids Mode?</label>
                       </div>
                    </div>
+                   {/* Embedded Quiz Builder for Video */}
+                   <div className="mt-10 bg-[#0B1F3A] rounded-2xl p-6 border border-devotion-gold/30">
+                     <h3 className="text-lg font-black text-devotion-gold mb-2">Related Quizzes (Optional)</h3>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Question</label>
+                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.questionText} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, questionText: e.target.value })} />
+                       </div>
+                       <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Correct Option</label>
+                         <select className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.correctOption} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, correctOption: e.target.value })}>
+                           <option value="A">A</option>
+                           <option value="B">B</option>
+                           <option value="C">C</option>
+                           <option value="D">D</option>
+                         </select>
+                       </div>
+                       <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option A</label>
+                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionA} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionA: e.target.value })} />
+                       </div>
+                       <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option B</label>
+                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionB} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionB: e.target.value })} />
+                       </div>
+                       <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option C</label>
+                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionC} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionC: e.target.value })} />
+                       </div>
+                       <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Option D</label>
+                         <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:border-devotion-gold outline-none" value={videoQuizDraft.optionD} onChange={e => setVideoQuizDraft({ ...videoQuizDraft, optionD: e.target.value })} />
+                       </div>
+                     </div>
+                     <button
+                       type="button"
+                       className="mt-4 bg-devotion-gold text-devotion-darkBlue py-2 px-6 rounded-xl font-black text-xs uppercase tracking-widest shadow hover:bg-yellow-400 transition-all"
+                       onClick={() => {
+                         if (!videoQuizDraft.questionText || !videoQuizDraft.optionA || !videoQuizDraft.optionB) return;
+                         setVideoQuizList([...videoQuizList, videoQuizDraft]);
+                         setVideoQuizDraft({ questionText: '', optionA: '', optionB: '', optionC: '', optionD: '', correctOption: 'A' });
+                       }}
+                     >Add Quiz Question</button>
+                     {videoQuizList.length > 0 && (
+                       <div className="mt-6">
+                         <h4 className="font-bold text-devotion-gold mb-2">Quiz Questions Added:</h4>
+                         <ul className="space-y-2">
+                           {videoQuizList.map((quiz, idx) => (
+                             <li key={idx} className="bg-white/5 rounded-xl px-4 py-2 flex flex-col md:flex-row md:items-center md:gap-4">
+                               <span className="flex-1">{quiz.questionText}</span>
+                               <span className="text-xs text-devotion-gold">Correct: {quiz.correctOption}</span>
+                               <button type="button" className="ml-4 text-red-400 hover:text-red-600 font-bold" onClick={() => setVideoQuizList(videoQuizList.filter((_, i) => i !== idx))}>Remove</button>
+                             </li>
+                           ))}
+                         </ul>
+                       </div>
+                     )}
+                   </div>
+                   </>
                  )}
 
                   {/* QUIZ FORM */}
