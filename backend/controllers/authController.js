@@ -144,7 +144,7 @@ const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 const getOtpExpiryTime = () => Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000;
 
 const EMAIL_PROVIDER = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
-const ALLOW_OTP_PREVIEW = String(process.env.ALLOW_OTP_PREVIEW || 'false').toLowerCase() === 'true';
+const ALLOW_OTP_PREVIEW = String(process.env.ALLOW_OTP_PREVIEW || 'false').toLowerCase() === 'true' && String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev').trim();
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Gita Wisdom').trim();
