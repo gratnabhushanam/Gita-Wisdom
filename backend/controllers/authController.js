@@ -167,15 +167,16 @@ const resolveEmailProvider = () => {
     return 'preview';
   }
 
-  if (EMAIL_PROVIDER === 'resend' || EMAIL_PROVIDER === 'smtp') {
-    return EMAIL_PROVIDER;
-  }
-
-  // Prefer SMTP when credentials are available so production OTP stays on Gmail
-  // even if a stale RESEND_API_KEY is still present in the environment.
   const { user, pass } = getEmailAuthConfig();
+
+  // Force SMTP when credentials are present to avoid stale EMAIL_PROVIDER=resend
+  // overriding a working Gmail setup in production.
   if (user && pass) {
     return 'smtp';
+  }
+
+  if (EMAIL_PROVIDER === 'resend' || EMAIL_PROVIDER === 'smtp') {
+    return EMAIL_PROVIDER;
   }
 
   if (isResendConfigured()) {
