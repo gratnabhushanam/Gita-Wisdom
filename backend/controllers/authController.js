@@ -303,6 +303,11 @@ const getEmailFailureMessage = (error) => {
     return 'Preview OTP mode is enabled.';
   }
 
+  const resendValidationMessage = String(error?.responseBody?.message || error?.responseText || '').toLowerCase();
+  const resendSandboxRestricted = error?.provider === 'resend' && (
+    error?.responseBody?.name === 'validation_error' || resendValidationMessage.includes('only send testing emails')
+  );
+
   const authRejected = error && (
     error.responseCode === 535 ||
     (error.code === 'EAUTH' && error.provider !== 'resend')
@@ -323,6 +328,10 @@ const getEmailFailureMessage = (error) => {
   }
 
   if (resendRejected) {
+    if (resendSandboxRestricted) {
+      return 'Resend is in testing mode. OTP can currently be sent only to the account owner email until a domain sender is verified.';
+    }
+
     const details = error?.responseText
       ? ` Details: ${error.responseText}`
       : error?.responseBody && Object.keys(error.responseBody).length
