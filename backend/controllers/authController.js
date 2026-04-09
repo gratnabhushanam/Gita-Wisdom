@@ -248,6 +248,7 @@ const sendViaResend = async ({ email, name, otp }) => {
       error.status = response.status;
       error.responseBody = responseBody;
       error.responseText = responseText;
+      error.provider = 'resend';
       error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
       throw error;
     }
@@ -302,14 +303,20 @@ const getEmailFailureMessage = (error) => {
     return 'Preview OTP mode is enabled.';
   }
 
-  const authRejected = error && (error.code === 'EAUTH' || error.responseCode === 535);
+  const authRejected = error && (
+    error.responseCode === 535 ||
+    (error.code === 'EAUTH' && error.provider !== 'resend')
+  );
   const smtpNetworkBlocked = error && (
     error.code === 'ESOCKET' ||
     error.code === 'ENETUNREACH' ||
     error.code === 'ETIMEDOUT' ||
     error.code === 'ECONNREFUSED'
   );
-  const resendRejected = error && (error.code === 'EAUTH' || error.code === 'EFAIL');
+  const resendRejected = error && (
+    error.provider === 'resend' ||
+    error.code === 'EFAIL'
+  );
 
   if (authRejected) {
     return 'Gmail rejected EMAIL_PASS. Use a Gmail App Password.';
@@ -384,6 +391,7 @@ exports.getEmailHealth = async (req, res) => {
           error.status = response.status;
           error.responseBody = responseBody;
           error.responseText = responseText;
+          error.provider = 'resend';
           error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
           throw error;
         }
