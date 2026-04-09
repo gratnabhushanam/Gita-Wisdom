@@ -101,6 +101,8 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Add CORS headers specifically for video files served from /uploads/reels
+
+// CORS for video streaming (partial content/range requests)
 app.use('/uploads/reels', cors({
   origin: 'https://gitawisdom.vercel.app',
   credentials: true,
@@ -108,6 +110,45 @@ app.use('/uploads/reels', cors({
   allowedHeaders: ['Content-Type', 'Range'],
   exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Encoding', 'Content-Length'],
 }));
+
+// Custom video streaming route for bulletproof range support
+const fs = require('fs');
+app.get('/uploads/reels/:filename', (req, res) => {
+  const filePath = path.join(__dirname, 'uploads', 'reels', req.params.filename);
+  fs.stat(filePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      return res.status(404).end('Video not found');
+    }
+
+    const range = req.headers.range;
+    if (!range) {
+      // No range header, send the whole file
+      res.writeHead(200, {
+        'Content-Length': stats.size,
+        'Content-Type': 'video/mp4',
+        'Accept-Ranges': 'bytes',
+      });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+
+    // Parse Range header (e.g., "bytes=0-1023")
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+    const chunkSize = (end - start) + 1;
+
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': 'video/mp4',
+    });
+
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  });
+});
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
