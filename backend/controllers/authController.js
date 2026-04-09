@@ -171,6 +171,13 @@ const resolveEmailProvider = () => {
     return EMAIL_PROVIDER;
   }
 
+  // Prefer SMTP when credentials are available so production OTP stays on Gmail
+  // even if a stale RESEND_API_KEY is still present in the environment.
+  const { user, pass } = getEmailAuthConfig();
+  if (user && pass) {
+    return 'smtp';
+  }
+
   if (isResendConfigured()) {
     return 'resend';
   }
