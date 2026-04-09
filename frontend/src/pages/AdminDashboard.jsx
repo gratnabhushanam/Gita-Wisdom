@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import axios from 'axios';
 import { Database, Upload, Users, BookOpen, Video, LogOut, Settings, Film, Plus, X, Check, AlertCircle, Image as ImageIcon, Link as LinkIcon, FileText, Flame, Trash2, Pencil } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -7,7 +8,7 @@ import MediaPlayer from '../components/MediaPlayer';
 
 const VIDEO_COLLECTION_PRESETS = ['Bhagavad Gita', 'Ramayanam', 'Mahabharat', 'Puranas'];
 
-export default function AdminDashboard() {
+function AdminDashboardContent() {
     const [showAuthError, setShowAuthError] = useState(false);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -1267,5 +1268,13 @@ export default function AdminDashboard() {
       )}
 
     </div>
+  );
+}
+
+export default function AdminDashboard() {
+  return (
+    <ErrorBoundary>
+      <AdminDashboardContent />
+    </ErrorBoundary>
   );
 }
