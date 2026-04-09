@@ -18,7 +18,8 @@ export default function DailySloka() {
     const dd = String(date.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   };
-  const todayDateKey = formatLocalDateKey();
+  const getTodayDateKey = () => formatLocalDateKey();
+  const todayDateKey = getTodayDateKey();
   const defaultDateKey = todayDateKey < MIN_DAILY_DATE_KEY ? MIN_DAILY_DATE_KEY : todayDateKey;
   const [dailySloka, setDailySloka] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -154,6 +155,15 @@ export default function DailySloka() {
     return `${yyyy}-${mm}-${dd}`;
   };
 
+  const clampDateKey = (dateKey) => {
+    const safeDateKey = String(dateKey || '').trim();
+    if (!safeDateKey) return selectedDateKey;
+    const todayKey = getTodayDateKey();
+    if (safeDateKey > todayKey) return todayKey;
+    if (safeDateKey < MIN_DAILY_DATE_KEY) return MIN_DAILY_DATE_KEY;
+    return safeDateKey;
+  };
+
   const fetchDailySloka = async (dateKey = selectedDateKey) => {
     setLoading(true);
     try {
@@ -196,19 +206,24 @@ export default function DailySloka() {
   const handleDateSelection = async (event) => {
     const pickedDate = String(event.target.value || '').trim();
     if (!pickedDate) return;
-    if (pickedDate > todayDateKey) {
+    const todayKey = getTodayDateKey();
+    if (pickedDate > todayKey) {
       setSaveStatus('Future dates are disabled');
       window.setTimeout(() => setSaveStatus(''), 2000);
-      return;
     }
     if (pickedDate < MIN_DAILY_DATE_KEY) {
       setSaveStatus('Calendar starts from 2026-01-01');
       window.setTimeout(() => setSaveStatus(''), 2000);
-      return;
     }
+
+    const normalizedDate = clampDateKey(pickedDate);
+    if (normalizedDate !== pickedDate) {
+      event.target.value = normalizedDate;
+    }
+
     stopPlayback();
-    setSelectedDateKey(pickedDate);
-    await fetchDailySloka(pickedDate);
+    setSelectedDateKey(normalizedDate);
+    await fetchDailySloka(normalizedDate);
   };
 
   const checkNotificationStatus = async () => {
@@ -516,7 +531,7 @@ export default function DailySloka() {
                   type="date"
                   value={selectedDateKey}
                   min={MIN_DAILY_DATE_KEY}
-                  max={todayDateKey}
+                  max={getTodayDateKey()}
                   onChange={handleDateSelection}
                   className="bg-transparent text-white text-xs font-bold outline-none px-2 py-1 rounded border border-devotion-gold/40 hover:border-devotion-gold/70 focus:border-devotion-gold transition-all"
                   aria-label="Choose daily sloka date"
