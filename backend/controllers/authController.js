@@ -148,6 +148,9 @@ const ALLOW_OTP_PREVIEW = String(process.env.ALLOW_OTP_PREVIEW || 'false').toLow
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev').trim();
 const RESEND_FROM_NAME = String(process.env.RESEND_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Gita Wisdom').trim();
+const BREVO_API_KEY = String(process.env.BREVO_API_KEY || '').trim();
+const BREVO_FROM_EMAIL = String(process.env.BREVO_FROM_EMAIL || '').trim();
+const BREVO_FROM_NAME = String(process.env.BREVO_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Gita Wisdom').trim();
 
 const getEmailAuthConfig = () => {
   const user = String(process.env.EMAIL_USER || process.env.GMAIL_USER || '').trim();
@@ -156,10 +159,11 @@ const getEmailAuthConfig = () => {
 };
 
 const isResendConfigured = () => Boolean(RESEND_API_KEY);
+const isBrevoConfigured = () => Boolean(BREVO_API_KEY && BREVO_FROM_EMAIL);
 
 const isEmailTransportConfigured = () => {
   const { user, pass } = getEmailAuthConfig();
-  return isResendConfigured() || Boolean(user && pass);
+  return isResendConfigured() || isBrevoConfigured() || Boolean(user && pass);
 };
 
 const resolveEmailProvider = () => {
@@ -167,20 +171,23 @@ const resolveEmailProvider = () => {
     return 'preview';
   }
 
+  if (EMAIL_PROVIDER === 'resend' || EMAIL_PROVIDER === 'smtp' || EMAIL_PROVIDER === 'brevo') {
+    return EMAIL_PROVIDER;
+  }
+
   const { user, pass } = getEmailAuthConfig();
 
-  // Force SMTP when credentials are present to avoid stale EMAIL_PROVIDER=resend
-  // overriding a working Gmail setup in production.
+  // Prefer SMTP only when explicitly configured and no API provider is selected.
   if (user && pass) {
     return 'smtp';
   }
 
-  if (EMAIL_PROVIDER === 'resend' || EMAIL_PROVIDER === 'smtp') {
-    return EMAIL_PROVIDER;
-  }
-
   if (isResendConfigured()) {
     return 'resend';
+  }
+
+  if (isBrevoConfigured()) {
+    return 'brevo';
   }
 
   return 'smtp';
@@ -191,6 +198,7 @@ const SMTP_HOST = String(process.env.SMTP_HOST || 'smtp.gmail.com').trim();
 const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || (SMTP_PORT === 465 ? 'true' : 'false')).toLowerCase() === 'true';
 const RESEND_TIMEOUT_MS = Number(process.env.RESEND_TIMEOUT_MS || 12000);
+const BREVO_TIMEOUT_MS = Number(process.env.BREVO_TIMEOUT_MS || 12000);
 
 const buildTransporter = () => nodemailer.createTransport({
   host: SMTP_HOST,
@@ -211,6 +219,17 @@ const buildResendPayload = ({ email, name, otp }) => ({
   subject: 'Your Gita Wisdom OTP Code',
   text: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
   html: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
+});
+
+const buildBrevoPayload = ({ email, name, otp }) => ({
+  sender: {
+    name: BREVO_FROM_NAME,
+    email: BREVO_FROM_EMAIL,
+  },
+  to: [{ email }],
+  subject: 'Your Gita Wisdom OTP Code',
+  textContent: `Hare Krishna ${name || ''}, your OTP is ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+  htmlContent: `<div style="font-family:Arial,sans-serif;background:#08111f;color:#fef3c7;padding:24px;border-radius:12px;border:1px solid #d4a12d;max-width:520px;"><h2 style="margin:0 0 12px;color:#f5d06f;">Gita Wisdom Account Verification</h2><p style="margin:0 0 16px;line-height:1.5;">Hare Krishna ${name || ''}, use this OTP to verify your account.</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;color:#ffffff;margin:10px 0 18px;">${otp}</div><p style="margin:0;color:#fcd34d;">This OTP expires in ${OTP_EXPIRY_MINUTES} minutes.</p></div>`,
 });
 
 const sendViaResend = async ({ email, name, otp }) => {
@@ -322,6 +341,7 @@ const getEmailFailureMessage = (error) => {
     error.provider === 'resend' ||
     error.code === 'EFAIL'
   );
+  const brevoRejected = error && error.provider === 'brevo';
 
   if (authRejected) {
     return 'Gmail rejected EMAIL_PASS. Use a Gmail App Password.';
@@ -339,6 +359,16 @@ const getEmailFailureMessage = (error) => {
         : '';
     const status = error?.status ? ` (status ${error.status})` : '';
     return `Resend API rejected the request${status}. Check RESEND_API_KEY and RESEND_FROM_EMAIL.${details}`;
+  }
+
+  if (brevoRejected) {
+    const details = error?.responseText
+      ? ` Details: ${error.responseText}`
+      : error?.responseBody && Object.keys(error.responseBody).length
+        ? ` Details: ${JSON.stringify(error.responseBody)}`
+        : '';
+    const status = error?.status ? ` (status ${error.status})` : '';
+    return `Brevo API rejected the request${status}. Check BREVO_API_KEY and BREVO_FROM_EMAIL.${details}`;
   }
 
   if (smtpNetworkBlocked) {
@@ -418,6 +448,49 @@ exports.getEmailHealth = async (req, res) => {
       }
     }
 
+    if (provider === 'brevo') {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), BREVO_TIMEOUT_MS);
+
+      try {
+        const response = await fetch('https://api.brevo.com/v3/account', {
+          headers: {
+            'api-key': BREVO_API_KEY,
+          },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const responseText = await response.text();
+          const responseBody = responseText ? (() => {
+            try {
+              return JSON.parse(responseText);
+            } catch {
+              return { raw: responseText };
+            }
+          })() : {};
+          const error = new Error(responseBody.message || `Brevo health check failed with status ${response.status}`);
+          error.status = response.status;
+          error.responseBody = responseBody;
+          error.responseText = responseText;
+          error.provider = 'brevo';
+          error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
+          throw error;
+        }
+
+        return res.status(200).json({
+          configured: true,
+          reachable: true,
+          mode: 'live',
+          provider: 'brevo',
+          smtpUser: null,
+          message: 'Brevo API is reachable. OTP emails should be delivered.',
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
     const transporter = buildTransporter();
     await withTimeout(transporter.verify(), SMTP_TIMEOUT_MS, 'SMTP verification timed out');
 
@@ -458,10 +531,12 @@ const sendOtpEmail = async ({ email, name, otp }) => {
 
   const providerPreference = resolveEmailProvider();
   const deliveryPlan = providerPreference === 'resend'
-    ? ['resend', 'smtp']
+    ? ['resend', 'brevo', 'smtp']
+    : providerPreference === 'brevo'
+      ? ['brevo', 'resend', 'smtp']
     : providerPreference === 'smtp'
-      ? ['smtp', 'resend']
-      : ['resend', 'smtp'];
+      ? ['smtp', 'resend', 'brevo']
+      : ['resend', 'brevo', 'smtp'];
 
   let lastError = null;
 
@@ -473,6 +548,21 @@ const sendOtpEmail = async ({ email, name, otp }) => {
           return result;
         }
         lastError = new Error(result?.message || 'Resend delivery failed');
+        lastError.provider = 'resend';
+        lastError.code = 'EFAIL';
+        continue;
+      }
+
+      if (provider === 'brevo') {
+        const result = await sendViaBrevo({ email, name, otp });
+        if (result?.delivered) {
+          return result;
+        }
+        if (result?.message && /not configured/i.test(result.message) && lastError) {
+          continue;
+        }
+        lastError = new Error(result?.message || 'Brevo delivery failed');
+        lastError.provider = 'brevo';
         lastError.code = 'EFAIL';
         continue;
       }
@@ -1393,4 +1483,56 @@ module.exports.getUserByIdForAuth = async (id) => {
   return User.findByPk(id, {
     attributes: { exclude: ['password'] },
   });
+};
+
+const sendViaBrevo = async ({ email, name, otp }) => {
+  if (!isBrevoConfigured()) {
+    return {
+      delivered: false,
+      message: 'Brevo is not configured. Set BREVO_API_KEY and BREVO_FROM_EMAIL.',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BREVO_TIMEOUT_MS);
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildBrevoPayload({ email, name, otp })),
+      signal: controller.signal,
+    });
+
+    const responseText = await response.text();
+    const responseBody = responseText ? (() => {
+      try {
+        return JSON.parse(responseText);
+      } catch {
+        return { raw: responseText };
+      }
+    })() : {};
+
+    if (!response.ok) {
+      const error = new Error(responseBody.message || `Brevo request failed with status ${response.status}`);
+      error.status = response.status;
+      error.responseBody = responseBody;
+      error.responseText = responseText;
+      error.provider = 'brevo';
+      error.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EFAIL';
+      throw error;
+    }
+
+    return { delivered: true, provider: 'brevo', messageId: responseBody.messageId || null };
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      error.code = 'ETIMEDOUT';
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
