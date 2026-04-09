@@ -443,30 +443,18 @@ export default function AdminDashboard() {
             </div>
             
             {['movies', 'stories', 'videos'].includes(activeTab) && (
-              <div className="flex flex-wrap gap-3 justify-end">
-                {activeTab === 'videos' && (
-                  <button
-                    onClick={() => {
-                      resetForms();
-                      setVideosUploadType('quiz');
-                      setShowAddModal(true);
-                    }}
-                    className="bg-white/10 border border-white/20 text-white px-8 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-white/15 transition-all flex items-center gap-3"
-                  >
-                    <Plus className="w-5 h-5" /> Add Quiz Question
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    resetForms();
+              <button
+                onClick={() => {
+                  resetForms();
+                  if (activeTab === 'videos') {
                     setVideosUploadType('video');
-                    setShowAddModal(true);
-                  }}
-                  className="bg-devotion-gold text-devotion-darkBlue px-10 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-yellow-400 transition-all flex items-center gap-3 shadow-2xl shadow-devotion-gold/20 transform hover:-translate-y-1 active:scale-95"
-                >
-                  <Plus className="w-5 h-5" /> Add New {activeTab === 'videos' ? 'Video' : currentContentLabel}
-                </button>
-              </div>
+                  }
+                  setShowAddModal(true);
+                }}
+                className="bg-devotion-gold text-devotion-darkBlue px-10 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-yellow-400 transition-all flex items-center gap-3 shadow-2xl shadow-devotion-gold/20 transform hover:-translate-y-1 active:scale-95"
+              >
+                <Plus className="w-5 h-5" /> Add New {activeTab === 'videos' ? 'Video' : currentContentLabel}
+              </button>
             )}
          </div>
 
@@ -810,7 +798,19 @@ export default function AdminDashboard() {
                   <div className="mt-12 border-t border-white/10 pt-10">
                     <div className="flex justify-between items-center mb-8">
                       <h3 className="text-2xl font-serif font-black text-white uppercase tracking-tighter">Quiz <span className="text-devotion-gold">Library</span></h3>
-                      <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.quizQuestions.length}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.quizQuestions.length}</span>
+                        <button
+                          onClick={() => {
+                            resetForms();
+                            setVideosUploadType('quiz');
+                            setShowAddModal(true);
+                          }}
+                          className="bg-white/10 border border-white/20 text-white px-5 py-2 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/15 transition-all flex items-center gap-2"
+                        >
+                          <Plus className="w-4 h-4" /> Add Quiz
+                        </button>
+                      </div>
                     </div>
 
                     {data.quizQuestions.length === 0 ? (
