@@ -55,6 +55,15 @@ const loadStore = () => {
 };
 
 const saveStore = (questions) => {
+  // Backup before writing
+  try {
+    const backupPath = STORE_FILE.replace('.json', `_backup_${Date.now()}.json`);
+    if (fs.existsSync(STORE_FILE)) {
+      fs.copyFileSync(STORE_FILE, backupPath);
+    }
+  } catch (e) {
+    // Ignore backup errors
+  }
   fs.writeFileSync(STORE_FILE, JSON.stringify(questions, null, 2), 'utf8');
 };
 
@@ -84,18 +93,23 @@ exports.getQuizQuestions = (req, res) => {
 
 exports.addQuizQuestion = (req, res) => {
   try {
+    console.log('[QUIZ][UPLOAD] Incoming body:', req.body);
     const questionText = String(req.body?.questionText || '').trim();
     const category = String(req.body?.category || 'Gita Challenge').trim();
     const videoUrl = String(req.body?.videoUrl || '').trim();
+    const videoId = req.body?.videoId || null;
     const options = normalizeOptions(req.body?.options);
 
     if (!questionText) {
+      console.warn('[QUIZ][UPLOAD] Missing questionText');
       return res.status(400).json({ message: 'questionText is required' });
     }
     if (options.length < 2) {
+      console.warn('[QUIZ][UPLOAD] Less than 2 options');
       return res.status(400).json({ message: 'At least 2 options are required' });
     }
     if (!options.some((item) => item.isCorrect)) {
+      console.warn('[QUIZ][UPLOAD] No correct option');
       return res.status(400).json({ message: 'At least one correct option is required' });
     }
 
@@ -108,6 +122,7 @@ exports.addQuizQuestion = (req, res) => {
       questionText,
       category,
       videoUrl,
+      videoId,
       options,
       createdAt: now,
       updatedAt: now,
@@ -115,9 +130,11 @@ exports.addQuizQuestion = (req, res) => {
 
     questions.push(created);
     saveStore(questions);
+    console.log('[QUIZ][UPLOAD] Saved new quiz question:', created);
 
     return res.status(201).json(created);
   } catch (error) {
+    console.error('[QUIZ][UPLOAD] Error:', error);
     return res.status(500).json({ message: 'Failed to add quiz question' });
   }
 };

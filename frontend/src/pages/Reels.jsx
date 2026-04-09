@@ -19,6 +19,7 @@ export default function Reels() {
   const [reels, setReels] = useState([]);
   const [pendingReels, setPendingReels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [commentInputs, setCommentInputs] = useState({});
   const [submittingCommentId, setSubmittingCommentId] = useState(null);
   const [moderatingId, setModeratingId] = useState(null);
@@ -46,12 +47,27 @@ export default function Reels() {
   const canViewCommenterProfile = (reel) => Boolean(user?.role === 'admin' || isReelOwner(reel));
 
   useEffect(() => {
+    // Fetch reels and pending moderation reels
     const fetchReels = async () => {
       try {
         const [curatedResponse, userReelsResponse] = await Promise.all([
-          axios.get('/api/videos/reels'),
-          axios.get('/api/videos/user-reels'),
+          axios.get('/api/videos/reels').catch((err) => err.response || err),
+          axios.get('/api/videos/user-reels').catch((err) => err.response || err),
         ]);
+
+        // Detect if either response is a login page (HTML) or 401/403
+        const isAuthError = (resp) => {
+          if (!resp) return true;
+          if (resp.status === 401 || resp.status === 403) return true;
+          if (typeof resp.data === 'string' && resp.data.includes('<form') && resp.data.includes('SIGN IN')) return true;
+          return false;
+        };
+
+        if (isAuthError(curatedResponse) || isAuthError(userReelsResponse)) {
+          setError('You must be logged in to view reels. Please sign in.');
+          setReels([]);
+          return;
+        }
 
         const safeUserReels = (userReelsResponse.data || []).filter(
           (reel) =>
@@ -62,8 +78,12 @@ export default function Reels() {
 
         const mergedReels = [...safeUserReels, ...(curatedResponse.data || [])];
         setReels(mergedReels);
-      } catch (error) {
-        console.error('Error fetching reels:', error);
+        if (mergedReels.length === 0) {
+          setError('No reels found. Please check back later or upload new content.');
+        }
+      } catch (err) {
+        setError('Failed to load reels. Please try again later.');
+        console.error('Error fetching reels:', err);
       } finally {
         setLoading(false);
       }
@@ -74,22 +94,20 @@ export default function Reels() {
         setPendingReels([]);
         return;
       }
-
       try {
-        const token = localStorage.getItem('token');
-        const response = await axios.get('/api/videos/user-reels/moderation?status=pending', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await axios.get('/api/videos/user-reels?status=pending');
         setPendingReels(response.data || []);
-      } catch (error) {
-        console.error('Error loading moderation queue:', error);
+      } catch (err) {
+        setPendingReels([]);
       }
     };
 
     fetchReels();
     fetchPendingModeration();
+    // eslint-disable-next-line
   }, [user?.role]);
 
+  // Sound preference effect
   useEffect(() => {
     try {
       const raw = localStorage.getItem(REELS_SOUND_PREF_KEY);
@@ -100,7 +118,6 @@ export default function Reels() {
           const narrowViewport = window.innerWidth <= 768;
           return touchDevice || narrowViewport;
         })();
-
         setSoundEnabled(!isLikelyMobile);
         return;
       }
@@ -134,7 +151,7 @@ export default function Reels() {
       console.error('Failed to load saved reels:', error);
       setSavedReelMap({});
     }
-  }, [currentUserId]);
+  }, [location?.state?.focusReelId, reels]);
 
   useEffect(() => {
     if (!reels.length) {
@@ -424,6 +441,17 @@ export default function Reels() {
       <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-[#D39A4A]"></div>
     </div>
   );
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-center px-4">
+        <div className="text-2xl font-bold text-yellow-400 mb-4">{error}</div>
+        {error.includes('login') || error.includes('sign in') ? (
+          <Link to="/login" className="px-6 py-3 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 text-black font-bold text-lg shadow-lg hover:scale-105 transition-transform">Go to Login</Link>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen text-white flex justify-center overflow-hidden relative">
