@@ -63,7 +63,9 @@ const createRateLimiter = ({ windowMs, maxRequests, isMatch }) => {
 };
 
 app.use(helmet());
-app.use(cors({
+
+// Only apply global CORS to API routes
+app.use('/api', cors({
   origin: (origin, callback) => {
     if (isOriginAllowed(origin)) {
       return callback(null, true);
