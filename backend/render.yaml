@@ -42,11 +42,21 @@ services:
         sync: false
       - key: EMAIL_FROM_NAME
         value: Gita Wisdom
+      - key: EMAIL_PROVIDER
+        value: brevo
       - key: ALLOW_OTP_PREVIEW
-        value: true
+        value: false
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM_EMAIL
         value: onboarding@resend.dev
       - key: RESEND_FROM_NAME
         value: Gita Wisdom
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_FROM_EMAIL
+        sync: false
+      - key: BREVO_FROM_NAME
+        value: Gita Wisdom
+      - key: BREVO_TIMEOUT_MS
+        value: 12000
