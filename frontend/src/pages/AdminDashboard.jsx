@@ -8,6 +8,7 @@ import MediaPlayer from '../components/MediaPlayer';
 const VIDEO_COLLECTION_PRESETS = ['Bhagavad Gita', 'Ramayanam', 'Mahabharat', 'Puranas'];
 
 export default function AdminDashboard() {
+    const [showAuthError, setShowAuthError] = useState(false);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -123,6 +124,7 @@ export default function AdminDashboard() {
         setPendingUserReels(Array.isArray(pendingResponse.data) ? pendingResponse.data : []);
       }
     } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to fetch admin data. Please check your connection or try again later.' });
       console.error('Error fetching admin data:', error);
     }
   };
@@ -417,8 +419,19 @@ export default function AdminDashboard() {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-[#06101E]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-devotion-gold"></div></div>;
 
   return (
-    <div className="min-h-screen bg-[#06101E] text-white flex">
-      {/* Admin Sidebar */}
+    <div className="min-h-screen bg-[#06101E] text-white flex flex-col">
+      {message.type === 'error' && message.text.toLowerCase().includes('login') && (
+        <div className="w-full flex flex-col items-center justify-center py-8 bg-black/90 z-50">
+          <div className="text-2xl font-bold text-yellow-400 mb-4">{message.text}</div>
+          <button
+            onClick={() => { setShowAuthError(false); navigate('/login'); }}
+            className="px-8 py-3 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 text-black font-bold text-lg shadow-lg hover:scale-105 transition-transform"
+          >
+            Go to Login
+          </button>
+        </div>
+      )}
+      {/* Admin Sidebar (Desktop) */}
       <div className="w-72 bg-devotion-darkBlue/80 backdrop-blur-2xl border-r border-white/5 hidden md:flex flex-col shadow-2xl">
         <div className="p-8 border-b border-white/5">
           <div className="flex items-center gap-3 mb-2">
@@ -431,7 +444,6 @@ export default function AdminDashboard() {
           </div>
           <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em]">Spiritual Management</p>
         </div>
-
         <nav className="flex-1 p-6 space-y-3">
           {[
             { id: 'dashboard', name: 'Analytics', icon: <Database className="w-5 h-5" /> },
@@ -449,7 +461,6 @@ export default function AdminDashboard() {
             </button>
           ))}
         </nav>
-
         <div className="p-6 border-t border-white/5">
           <button 
             onClick={() => navigate('/')}
@@ -459,6 +470,54 @@ export default function AdminDashboard() {
           </button>
         </div>
       </div>
+
+      {/* Mobile Admin Topbar Menu */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-devotion-darkBlue/95 border-b border-devotion-gold/20 flex items-center justify-between px-4 py-3 shadow-xl">
+        <div className="flex items-center gap-3">
+          <Settings className="w-5 h-5 text-devotion-gold" />
+          <span className="font-serif font-black text-lg text-white tracking-widest uppercase">Gita<span className="text-devotion-gold">Admin</span></span>
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => setShowAddModal(false) || setShowMobileMenu((v) => !v)}
+            className="p-2 rounded-full bg-devotion-gold/10 border border-devotion-gold/30 text-devotion-gold focus:outline-none focus:ring-2 focus:ring-devotion-gold"
+            aria-label="Open admin menu"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+          {typeof showMobileMenu !== 'undefined' && showMobileMenu && (
+            <div className="absolute right-0 mt-2 w-48 bg-devotion-darkBlue border border-devotion-gold/20 rounded-2xl shadow-2xl z-50">
+              {[
+                { id: 'dashboard', name: 'Analytics', icon: <Database className="w-4 h-4" /> },
+                { id: 'movies', name: 'Movies', icon: <Film className="w-4 h-4" /> },
+                { id: 'stories', name: 'Stories', icon: <BookOpen className="w-4 h-4" /> },
+                { id: 'videos', name: 'Videos', icon: <Video className="w-4 h-4" /> },
+                { id: 'users', name: 'Users', icon: <Users className="w-4 h-4" /> },
+              ].map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
+                  className={`w-full flex items-center gap-3 px-5 py-3 rounded-xl transition-all font-black text-[11px] uppercase tracking-widest ${activeTab === item.id ? 'bg-devotion-gold text-devotion-darkBlue' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  {item.icon} {item.name}
+                </button>
+              ))}
+              <button
+                onClick={() => { navigate('/'); setShowMobileMenu(false); }}
+                className="w-full flex items-center gap-3 px-5 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 font-black text-[11px] uppercase tracking-widest transition-all border-t border-devotion-gold/10 mt-2"
+              >
+                <LogOut className="w-4 h-4" /> Exit to App
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Add state for mobile menu */}
+      {typeof showMobileMenu === 'undefined' && (
+        // eslint-disable-next-line react-hooks/rules-of-hooks
+        (() => { const [showMobileMenu, setShowMobileMenu] = useState(false); return null; })()
+      )}
 
       {/* Admin Content Area */}
       <div className="flex-1 flex flex-col pt-24 px-10 pb-10 overflow-y-auto">
