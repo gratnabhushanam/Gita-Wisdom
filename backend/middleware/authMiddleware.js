@@ -49,4 +49,13 @@ const admin = (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin };
+// Fine-grained role middleware: hasRole('admin'), hasRole(['admin','moderator'])
+const hasRole = (roles) => (req, res, next) => {
+  const allowed = Array.isArray(roles) ? roles : [roles];
+  if (req.user && allowed.includes(req.user.role)) {
+    return next();
+  }
+  return res.status(403).json({ message: `Not authorized. Required role: ${allowed.join(', ')}` });
+};
+
+module.exports = { protect, admin, hasRole };

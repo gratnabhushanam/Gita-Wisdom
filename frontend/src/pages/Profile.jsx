@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import KrishnaSVG from '../assets/krishna-scene.svg';
 import axios from 'axios';
 import { User, Mail, Bell, Shield, Heart, Flame, Trophy, Settings, LogOut, Camera, Edit2, Check, ExternalLink, Sparkles, BookOpen, Share2, Bookmark, Video } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -477,8 +478,10 @@ export default function Profile() {
   );
 
   return (
-    <div className="min-h-screen pt-28 pb-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-10">
+    <div className="min-h-screen pt-28 pb-12 px-4 sm:px-6 lg:px-8 relative">
+      {/* Cinematic Krishna SVG background */}
+      <img src={KrishnaSVG} alt="Krishna Scene" className="w-full max-w-xs absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none select-none opacity-80" style={{zIndex:0}} />
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-10 relative z-10">
         
         {/* Profile Card */}
         <div className="lg:col-span-1">
@@ -511,12 +514,12 @@ export default function Profile() {
                            className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                          >
                             <Camera className="w-8 h-8 text-white" />
-                         </button>
-                         <input 
-                           type="file" 
-                           ref={fileInputRef} 
-                           className="hidden" 
-                           accept="image/*"
+                        <button
+                          className="bg-devotion-gold text-white px-4 py-2 rounded-lg shadow-md hover:bg-yellow-500 transition btn-ripple btn-glow btn-scale min-h-[44px] min-w-[44px]"
+                          onClick={handleLogout}
+                        >
+                          Logout
+                        </button>
                            onChange={handleFileUpload}
                          />
                        </>

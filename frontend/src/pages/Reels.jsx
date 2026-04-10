@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 // Krishna-themed SVG asset for floating animation
 const FLOATING_KRISHNA = '/krishna-floating.svg';
 import axios from 'axios';
+import KrishnaSVG from '../assets/krishna-scene.svg';
 import { Music, PlusCircle, Bookmark, Volume2, VolumeX, Play, Pause } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import MediaPlayerHLS from '../components/MediaPlayerHLS';
@@ -455,6 +456,8 @@ export default function Reels() {
 
   return (
     <div className="min-h-screen text-white flex justify-center overflow-hidden relative">
+      {/* Cinematic Krishna SVG background */}
+      <img src={KrishnaSVG} alt="Krishna Scene" className="w-full max-w-xs absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none select-none opacity-70" style={{zIndex:1}} />
       {REELS_BACKGROUND_SCENES.map((image, index) => (
         <div
           key={image}
@@ -482,12 +485,12 @@ export default function Reels() {
                       className="flex-1 py-2 rounded-xl bg-green-500/20 border border-green-500/40 text-green-300 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
                     >
                       Approve
-                    </button>
                     <button
-                      onClick={() => handleModeration(pendingId, 'rejected')}
-                      disabled={moderatingId === pendingId}
-                      className="flex-1 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                      className="absolute top-2 right-2 bg-devotion-gold text-white rounded-full p-2 shadow-md hover:bg-yellow-500 transition btn-ripple btn-glow btn-scale min-h-[44px] min-w-[44px]"
+                      onClick={handleLike}
                     >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7" /></svg>
+                    </button>
                       Reject
                     </button>
                   </div>

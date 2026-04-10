@@ -1,40 +1,120 @@
 import { resumableUpload } from '../utils/resumableUpload';
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [videoUploadFile, setVideoUploadFile] = useState(null);
+  // Add contentType, duration, orientation to videoForm
+  const [videoForm, setVideoForm] = useState({ title: '', description: '', videoUrl: '', category: 'reels', collectionTitle: 'Bhagavad Gita', isKids: false, tags: '', contentType: 'short', duration: '', orientation: '' });
   // Handle resumable video file upload
   const handleVideoFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // Validation rules
+    const SHORT_MAX_SIZE_MB = 100;
+    const SHORT_MIN_DURATION = 3;
+    const SHORT_MAX_DURATION = 90;
+    const LONG_MAX_SIZE_MB = 5120; // 5GB
+    const LONG_MIN_DURATION = 91; // >90s
+    const LONG_MAX_DURATION = 14400; // 4 hours
     setVideoUploadFile(file);
     setVideoUploadProgress(0);
+    let duration = '';
+    let orientation = '';
+    let aspect = '';
+    let error = '';
     try {
-      const token = localStorage.getItem('token');
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        'video-title': videoForm.title,
-        'video-description': videoForm.description,
-        'video-tags': videoForm.tags,
-        'video-kids': videoForm.isKids ? 'true' : 'false',
-        'video-collection': videoForm.collectionTitle,
-        'video-category': videoForm.category,
+      const videoEl = document.createElement('video');
+      videoEl.preload = 'metadata';
+      videoEl.onloadedmetadata = function () {
+        duration = videoEl.duration;
+        orientation = videoEl.videoWidth > videoEl.videoHeight ? 'landscape' : 'portrait';
+        aspect = (videoEl.videoWidth / videoEl.videoHeight).toFixed(2);
+        setVideoForm((prev) => ({ ...prev, duration, orientation }));
+        // Validation for short-form reels
+        if (videoForm.contentType === 'short') {
+          if (file.size > SHORT_MAX_SIZE_MB * 1024 * 1024) {
+            error = `File size must be <= ${SHORT_MAX_SIZE_MB}MB.`;
+          } else if (duration < SHORT_MIN_DURATION || duration > SHORT_MAX_DURATION) {
+            error = `Duration must be between ${SHORT_MIN_DURATION}s and ${SHORT_MAX_DURATION}s.`;
+          } else if (!(
+            (Math.abs(aspect - 0.56) < 0.1) || // 9:16
+            (Math.abs(aspect - 1.0) < 0.1)     // 1:1
+          )) {
+            error = 'Aspect ratio must be 9:16 (vertical) or 1:1 (square).';
+          }
+        }
+        // Validation for long-form OTT videos
+        else if (videoForm.contentType === 'long') {
+          if (file.size > LONG_MAX_SIZE_MB * 1024 * 1024) {
+            error = `File size must be <= ${LONG_MAX_SIZE_MB}MB.`;
+          } else if (duration < LONG_MIN_DURATION || duration > LONG_MAX_DURATION) {
+            error = `Duration must be between ${LONG_MIN_DURATION}s and ${LONG_MAX_DURATION}s.`;
+          } else if (!(
+            (Math.abs(aspect - 1.78) < 0.1) || // 16:9
+            (Math.abs(aspect - 1.33) < 0.1)    // 4:3
+          )) {
+            error = 'Aspect ratio must be 16:9 (landscape) or 4:3.';
+          }
+        }
+        if (error) {
+          setMessage({ type: 'error', text: error });
+          setVideoUploadFile(null);
+          setVideoUploadProgress(0);
+          return;
+        }
       };
-      const result = await resumableUpload({
-        file,
-        url: '/api/videos/upload/resumable',
-        headers,
-        onProgress: setVideoUploadProgress,
-      });
-      if (result && result.videoUrl) {
-        setVideoForm((prev) => ({ ...prev, videoUrl: result.videoUrl, hlsUrl: result.hlsUrl }));
-      } else if (result && result.fileName) {
-        // fallback: set videoUrl to assembled file
-        setVideoForm((prev) => ({ ...prev, videoUrl: `/uploads/reels/${result.fileName}` }));
+      videoEl.src = URL.createObjectURL(file);
+    } catch {}
+    // Wait for metadata validation before upload
+    setTimeout(async () => {
+      if (error) return;
+      try {
+        const token = localStorage.getItem('token');
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          'video-title': videoForm.title,
+          'video-description': videoForm.description,
+          'video-tags': videoForm.tags,
+          'video-kids': videoForm.isKids ? 'true' : 'false',
+          'video-collection': videoForm.collectionTitle,
+          'video-category': videoForm.category,
+          'video-content-type': videoForm.contentType,
+          'video-duration': videoForm.duration,
+          'video-orientation': videoForm.orientation,
+        };
+        const result = await resumableUpload({
+          file,
+          url: '/api/videos/upload/resumable',
+          headers,
+          onProgress: setVideoUploadProgress,
+        });
+        if (result && result.videoUrl) {
+          setVideoForm((prev) => ({ ...prev, videoUrl: result.videoUrl, hlsUrl: result.hlsUrl }));
+        } else if (result && result.fileName) {
+          setVideoForm((prev) => ({ ...prev, videoUrl: `/uploads/reels/${result.fileName}` }));
+        }
+      } catch (err) {
+        // Try to extract backend error message
+        let errorMsg = 'Video upload failed.';
+        if (err && err.message) {
+          try {
+            // If error message is JSON, parse it
+            if (err.message.trim().startsWith('{')) {
+              const parsed = JSON.parse(err.message);
+              if (parsed && parsed.message) errorMsg = parsed.message;
+            } else {
+              errorMsg = err.message;
+            }
+          } catch {
+            errorMsg = err.message;
+          }
+        }
+        setMessage({ type: 'error', text: errorMsg });
+        setVideoUploadFile(null);
+        setVideoUploadProgress(0);
       }
-    } catch (err) {
-      alert('Video upload failed: ' + err.message);
-    }
+    }, 300);
   };
 import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import axios from 'axios';
 import { Database, Upload, Users, BookOpen, Video, LogOut, Settings, Film, Plus, X, Check, AlertCircle, Image as ImageIcon, Link as LinkIcon, FileText, Flame, Trash2, Pencil } from 'lucide-react';
@@ -45,6 +125,28 @@ import MediaPlayerHLS from '../components/MediaPlayerHLS';
 const VIDEO_COLLECTION_PRESETS = ['Bhagavad Gita', 'Ramayanam', 'Mahabharat', 'Puranas'];
 
 function AdminDashboardContent() {
+      // Pending content moderation state
+      const [selectedPendingIds, setSelectedPendingIds] = useState([]);
+      const [pendingTypeFilter, setPendingTypeFilter] = useState('all');
+
+      // Filter pendingUserReels by type
+      const filteredPending = pendingTypeFilter === 'all'
+        ? pendingUserReels
+        : pendingUserReels.filter(item => (item.type || item.contentType || '').toLowerCase() === pendingTypeFilter);
+
+      // Bulk moderation handler
+      const bulkModerate = async (status) => {
+        setLoading(true);
+        const token = localStorage.getItem('token');
+        await Promise.all(selectedPendingIds.map(id =>
+          axios.patch(`/api/videos/user-reels/${id}/moderate`, { status }, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        ));
+        setSelectedPendingIds([]);
+        await fetchAdminData();
+        setLoading(false);
+      };
     const [showAuthError, setShowAuthError] = useState(false);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -59,6 +161,14 @@ function AdminDashboardContent() {
   const [quickFillStoryId, setQuickFillStoryId] = useState(null);
   const [moderationNotes, setModerationNotes] = useState({});
   const [message, setMessage] = useState({ type: '', text: '' });
+
+  // Auto-dismiss error messages after 5s
+  useEffect(() => {
+    if (message.type && message.text) {
+      const timer = setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
   const [movieForm, setMovieForm] = useState({ title: '', description: '', videoUrl: '', thumbnail: '', releaseYear: 2025, ownerHistory: '', tags: '' });
   const [storyForm, setStoryForm] = useState({
     title: '',
@@ -457,6 +567,12 @@ function AdminDashboardContent() {
 
   return (
     <div className="min-h-screen bg-[#06101E] text-white flex flex-col">
+      {/* Universal error message UI */}
+      {message.type === 'error' && message.text && (
+        <div className="fixed top-0 left-0 right-0 z-[200] flex items-center justify-center py-4 bg-red-900/90 border-b-2 border-red-500 shadow-2xl">
+          <span className="text-lg font-bold text-red-200">{message.text}</span>
+        </div>
+      )}
       {message.type === 'error' && message.text.toLowerCase().includes('login') && (
         <div className="w-full flex flex-col items-center justify-center py-8 bg-black/90 z-50">
           <div className="text-2xl font-bold text-yellow-400 mb-4">{message.text}</div>
@@ -488,6 +604,7 @@ function AdminDashboardContent() {
             { id: 'stories', name: 'Stories', icon: <BookOpen className="w-5 h-5" /> },
             { id: 'videos', name: 'Videos', icon: <Video className="w-5 h-5" /> },
             { id: 'users', name: 'Users', icon: <Users className="w-5 h-5" /> },
+            { id: 'settings', name: 'Settings', icon: <Settings className="w-5 h-5" /> },
           ].map(item => (
             <button
               key={item.id}
@@ -566,14 +683,13 @@ function AdminDashboardContent() {
            </div>
          )}
 
-         <div className="mb-12 flex justify-between items-end">
+         <div className="mb-12 flex flex-col md:flex-row justify-between items-end gap-6">
             <div>
-               <h1 className="text-6xl font-serif font-black text-white mb-2 uppercase tracking-tighter">
-                 {activeTab} <span className="text-devotion-gold">Center</span>
+               <h1 className="text-6xl font-serif font-black text-white mb-2 uppercase tracking-tighter drop-shadow-lg">
+                 {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} <span className="text-devotion-gold">Center</span>
                </h1>
-               <p className="text-gray-500 text-sm font-serif italic">Managing the divine knowledge base.</p>
+               <p className="text-gray-400 text-base font-serif italic">Manage the divine knowledge base with ease and clarity.</p>
             </div>
-            
             {['movies', 'stories', 'videos'].includes(activeTab) && (
               <button
                 onClick={() => {
@@ -583,17 +699,45 @@ function AdminDashboardContent() {
                   }
                   setShowAddModal(true);
                 }}
-                className="bg-devotion-gold text-devotion-darkBlue px-10 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:bg-yellow-400 transition-all flex items-center gap-3 shadow-2xl shadow-devotion-gold/20 transform hover:-translate-y-1 active:scale-95"
+                className="bg-gradient-to-r from-yellow-400 to-devotion-gold text-devotion-darkBlue px-10 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] hover:from-yellow-300 hover:to-yellow-500 transition-all flex items-center gap-3 shadow-2xl shadow-devotion-gold/20 transform hover:-translate-y-1 active:scale-95"
               >
                 <Plus className="w-5 h-5" /> Add New {activeTab === 'videos' ? 'Video' : currentContentLabel}
               </button>
             )}
          </div>
+            {activeTab === 'settings' && (
+              <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl flex flex-col items-center justify-center min-h-[300px]">
+                <h2 className="text-3xl font-serif font-black text-devotion-gold mb-6 uppercase tracking-widest">Settings</h2>
+                <p className="text-gray-400 text-lg mb-4">This is a placeholder for admin settings and preferences. You can add system info, theme options, or other controls here.</p>
+                <button className="px-8 py-3 rounded-xl bg-devotion-gold text-devotion-darkBlue font-black uppercase tracking-widest shadow-lg hover:bg-yellow-400 transition-all">Sample Action</button>
+              </div>
+            )}
 
           <div className="grid grid-cols-1 gap-6">
             {activeTab === 'dashboard' && data.stats && (
-              <div className="space-y-12">
+                <div className="space-y-12">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                                  {/* User Signups Over Time Chart */}
+                                  <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl mt-12">
+                                    <h3 className="text-2xl font-serif font-black text-white mb-10 uppercase tracking-widest flex items-center gap-4">
+                                      <Users className="text-devotion-gold" /> User Signups Over Time
+                                    </h3>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                      <LineChart
+                                        data={Array.isArray(data.stats.recentUsers) ? [...data.stats.recentUsers].reverse().map(u => ({
+                                          date: new Date(u.createdAt).toLocaleDateString(),
+                                          count: 1
+                                        })) : []}
+                                      >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="date" stroke="#f5d06f" />
+                                        <YAxis allowDecimals={false} stroke="#f5d06f" />
+                                        <Tooltip />
+                                        <Line type="monotone" dataKey="count" stroke="#f5d06f" strokeWidth={3} dot={{ r: 6 }} />
+                                      </LineChart>
+                                    </ResponsiveContainer>
+                                    <p className="text-gray-500 text-xs mt-4">Demo: Each signup is shown as a point. For real analytics, aggregate by date.</p>
+                                  </div>
                    {[
                      { label: 'Seekers Joined', value: data.stats.totalUsers, icon: <Users />, color: 'text-blue-400' },
                      { label: 'Divine Movies', value: data.stats.totalMovies, icon: <Film />, color: 'text-devotion-gold' },
@@ -682,38 +826,56 @@ function AdminDashboardContent() {
                </div>
             )}
 
-            {activeTab === 'movies' && (
+            {activeTab === 'videos' && (
                <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-3xl">
-                  <div className="flex justify-between items-center mb-10">
-                     <h3 className="text-3xl font-serif font-black text-white uppercase tracking-tighter">Movie <span className="text-devotion-gold">Library</span></h3>
-                     <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.movies.length}</span>
+                  <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-10 gap-4">
+                     <div>
+                       <h3 className="text-3xl font-serif font-black text-white uppercase tracking-tighter">Video <span className="text-devotion-gold">Library</span></h3>
+                       <span className="bg-devotion-gold/10 text-devotion-gold px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest border border-devotion-gold/30">Total: {data.videos.length}</span>
+                     </div>
+                     <div className="flex gap-2 items-center">
+                       <select value={pendingTypeFilter} onChange={e => setPendingTypeFilter(e.target.value)} className="px-4 py-2 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-devotion-gold">
+                         <option value="all">All Types</option>
+                         <option value="video">Videos</option>
+                         <option value="story">Stories</option>
+                         <option value="quiz">Quizzes</option>
+                       </select>
+                       <button onClick={() => bulkModerate('approved')} disabled={selectedPendingIds.length === 0} className="px-4 py-2 rounded-xl bg-green-600/80 text-white font-bold disabled:bg-gray-600">Approve Selected</button>
+                       <button onClick={() => bulkModerate('rejected')} disabled={selectedPendingIds.length === 0} className="px-4 py-2 rounded-xl bg-red-600/80 text-white font-bold disabled:bg-gray-600">Reject Selected</button>
+                     </div>
                   </div>
-                  {data.movies.length === 0 ? (
-                    <p className="text-gray-500 text-center py-12">No movies uploaded yet.</p>
+                  {filteredPending.length === 0 ? (
+                    <p className="text-gray-500 text-center py-12">No pending content for moderation.</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 overflow-x-auto">
-                      {data.movies.map((movie) => (
-                        <div key={movie._id || movie.id} className="p-6 rounded-2xl border border-white/10 bg-white/5 flex flex-col">
-                          {movie.videoUrl && (
-                            <div className="mb-4 rounded-xl overflow-hidden border border-devotion-gold/20 aspect-video bg-black">
-                              <MediaPlayerHLS
-                                url={movie.videoUrl}
-                                hlsUrl={movie.hlsUrl}
-                                title={movie.title}
-                                className="w-full h-full object-cover"
-                                youtubeParams="autoplay=0&rel=0&modestbranding=1"
-                                controls
-                              />
-                            </div>
-                          )}
-                          <h4 className="text-white font-bold text-lg mb-2">{movie.title}</h4>
-                          <p className="text-xs text-gray-400 mb-3">{movie.releaseYear || 'N/A'} • {(movie.tags || []).join(', ') || 'No tags'}</p>
-                          <p className="text-sm text-gray-300 line-clamp-2 mb-4">{movie.description || 'No description'}</p>
+                      {filteredPending.map((item) => (
+                        <div key={item._id || item.id} className="p-6 rounded-2xl border border-white/10 bg-white/5 flex flex-col relative">
+                          <input
+                            type="checkbox"
+                            className="absolute top-4 right-4 w-5 h-5 accent-devotion-gold"
+                            checked={selectedPendingIds.includes(item._id || item.id)}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setSelectedPendingIds([...selectedPendingIds, item._id || item.id]);
+                              } else {
+                                setSelectedPendingIds(selectedPendingIds.filter(id => id !== (item._id || item.id)));
+                              }
+                            }}
+                          />
+                          <h4 className="text-white font-bold text-lg mb-2">{item.title || item.name || 'Untitled'}</h4>
+                          <p className="text-xs text-gray-400 mb-3">{item.type || item.contentType || 'Unknown'} • Status: <span className={`font-bold ${item.status === 'pending' ? 'text-yellow-400' : item.status === 'approved' ? 'text-green-400' : 'text-red-400'}`}>{item.status || 'pending'}</span></p>
+                          <p className="text-sm text-gray-300 line-clamp-2 mb-4">{item.description || item.summary || 'No description'}</p>
                           <button
-                            onClick={() => handleDeleteContent('movies', movie._id || movie.id, movie.title || 'Untitled')}
-                            className="mt-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
+                            onClick={() => handleModerateUserReel(item._id || item.id, 'approved')}
+                            className="mt-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-green-500/30 text-green-300 hover:text-green-200 hover:bg-green-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
                           >
-                            <Trash2 className="w-4 h-4" /> Delete
+                            <Check className="w-4 h-4" /> Approve
+                          </button>
+                          <button
+                            onClick={() => handleModerateUserReel(item._id || item.id, 'rejected')}
+                            className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase tracking-widest"
+                          >
+                            <X className="w-4 h-4" /> Reject
                           </button>
                         </div>
                       ))}
@@ -1099,6 +1261,17 @@ function AdminDashboardContent() {
                    <>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10 overflow-x-auto">
                       <div className="space-y-4">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Content Type</label>
+                         <select
+                           className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none"
+                           value={videoForm.contentType}
+                           onChange={e => setVideoForm({ ...videoForm, contentType: e.target.value })}
+                         >
+                           <option value="short">Short-form Reel (&#60;= 90s)</option>
+                           <option value="long">Long-form Movie / Series</option>
+                         </select>
+                      </div>
+                      <div className="space-y-4">
                          <label className="text-[10px] font-black uppercase tracking-widest text-devotion-gold ml-2">Video Title</label>
                          <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white focus:border-devotion-gold outline-none" value={videoForm.title} onChange={e => setVideoForm({...videoForm, title: e.target.value})} />
                       </div>
@@ -1112,6 +1285,11 @@ function AdminDashboardContent() {
                          />
                          {videoUploadProgress > 0 && videoUploadProgress < 100 && (
                            <div className="mt-2 text-xs text-devotion-gold">Uploading: {videoUploadProgress}%</div>
+                         )}
+                         {videoForm.duration && (
+                           <div className="mt-2 text-xs text-devotion-gold">
+                             Duration: {Math.round(videoForm.duration)}s &nbsp;|&nbsp; Orientation: {videoForm.orientation}
+                           </div>
                          )}
                          <input
                            required

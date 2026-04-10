@@ -4,6 +4,7 @@ const Video = require('./Video');
 const Story = require('./Story');
 const Movie = require('./Movie');
 const Category = require('./Category');
+const Notification = require('./Notification');
 
 // Relationships
 User.belongsToMany(Sloka, { through: 'UserBookmarks', as: 'bookmarkedSlokas' });
@@ -19,4 +20,5 @@ module.exports = {
   Story,
   Movie,
   Category
+  Notification,
 };

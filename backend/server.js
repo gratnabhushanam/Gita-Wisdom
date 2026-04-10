@@ -11,8 +11,23 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 let initializePromise = null;
-// Serve HLS playlists and segments
-app.use('/uploads/hls', express.static(path.join(__dirname, 'uploads', 'hls')));
+// HLS DRM middleware
+const jwt = require('jsonwebtoken');
+app.use('/uploads/hls', (req, res, next) => {
+  // Allow only .m3u8 and .ts files with valid token
+  const token = req.query.token || req.headers['x-hls-token'];
+  if (!token) return res.status(401).send('Missing HLS token');
+  try {
+    const payload = jwt.verify(token, process.env.HLS_JWT_SECRET || 'supersecret');
+    // Optionally: check videoId matches requested file
+    // Example: /uploads/hls/:videoId/...
+    // const videoId = req.path.split('/')[1];
+    // if (payload.videoId !== videoId) return res.status(403).send('Invalid video token');
+    next();
+  } catch {
+    return res.status(401).send('Invalid or expired HLS token');
+  }
+}, express.static(path.join(__dirname, 'uploads', 'hls')));
 
 // Honor x-forwarded-proto so generated absolute URLs use https in production behind proxies.
 app.set('trust proxy', 1);
@@ -157,6 +172,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Routes
 
 app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/stories', require('./routes/storyRoutes'));
 app.use('/api/videos', require('./routes/videoRoutes'));
 app.use('/api/slokas', require('./routes/slokaRoutes'));

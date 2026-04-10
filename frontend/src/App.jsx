@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
@@ -72,6 +73,13 @@ function AppShell() {
     setBgIndex(getSceneIndexForPath(location.pathname));
   }, [location.pathname]);
 
+  // Animated page transitions
+  const pageTransition = {
+    initial: { opacity: 0, x: 40 },
+    animate: { opacity: 1, x: 0, transition: { duration: 0.45, ease: 'easeOut' } },
+    exit: { opacity: 0, x: -40, transition: { duration: 0.3, ease: 'easeIn' } },
+  };
+
   useEffect(() => {
     if (isAuthRoute) {
       return undefined;
@@ -91,38 +99,48 @@ function AppShell() {
           <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-spiritual-gold border-t-transparent"></div>
           <p className="text-sm uppercase tracking-[0.2em] text-spiritual-textMuted">Loading...</p>
         </div>
-      </div>
-    );
-  }
-
-  const pageFallback = (
-    <div className="flex min-h-[40vh] items-center justify-center text-white">
-      <div className="text-center">
-        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-spiritual-gold border-t-transparent"></div>
-        <p className="text-sm uppercase tracking-[0.2em] text-spiritual-textMuted">Loading page...</p>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="app-shell flex min-h-screen flex-col relative text-white transition-all duration-1000">
-      {!isAuthRoute && (
+      return (
         <>
-            <div
-                key={scenes[bgIndex].image}
-              className={`fixed inset-0 z-0 bg-cover bg-center transition-all duration-1000 app-shell__background ${scenes[bgIndex].className}`}
-                style={{ backgroundImage: `url('${scenes[bgIndex].image}')` }}
-              aria-label={scenes[bgIndex].symbolLabel}
-            />
-          <div className="fixed inset-0 z-0 bg-[#06101E]/48 backdrop-blur-[1px]"></div>
-          <div className="fixed inset-0 z-0 opacity-20 pointer-events-none bg-gold-glow animate-pulse"></div>
+          <Navbar />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={location.pathname}
+              initial={pageTransition.initial}
+              animate={pageTransition.animate}
+              exit={pageTransition.exit}
+              style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}
+            >
+              <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#06101E]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-devotion-gold"></div></div>}>
+                <Routes location={location} key={location.pathname}>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/home" element={<Home />} />
+                  <Route path="/stories" element={<Stories />} />
+                  <Route path="/videos" element={<Videos />} />
+                  <Route path="/sloka" element={<Sloka />} />
+                  <Route path="/about" element={<About />} />
+                  <Route path="/quiz" element={<Quiz />} />
+                  <Route path="/student" element={<StudentGuide />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/register/verify-otp" element={<RegisterVerifyOtp />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/mentor" element={<Mentor />} />
+                  <Route path="/daily-sloka" element={<DailySloka />} />
+                  <Route path="/reels" element={<Reels />} />
+                  <Route path="/kids" element={<KidsMode />} />
+                  <Route path="/search" element={<Search />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/movies" element={<Movies />} />
+                  <Route path="/upload-reel" element={<UploadReel />} />
+                  <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+              </Suspense>
+              <Footer />
+            </motion.div>
+          </AnimatePresence>
         </>
-      )}
-
-      <div className="relative z-10 flex min-h-screen flex-col">
-        {!isAuthRoute && <Navbar />}
-        <main className="flex-grow">
-          <Suspense fallback={pageFallback}>
+      );
             <Routes>
               <Route path="/" element={<Navigate to={user ? '/kids' : '/login'} replace />} />
               <Route path="/login" element={<Login />} />

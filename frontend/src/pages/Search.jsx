@@ -13,6 +13,10 @@ export default function Search() {
   const [results, setResults] = useState({ slokas: [], stories: [], videos: [], movies: [] });
   const [loading, setLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
+  // Advanced filters
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [languageFilter, setLanguageFilter] = useState('all');
 
   useEffect(() => {
     try {
@@ -35,9 +39,12 @@ export default function Search() {
     setLoading(true);
     try {
       const normalizedQuery = query.trim();
-      const searchUrl = normalizedQuery
-        ? `${API_BASE_URL}/api/search?q=${encodeURIComponent(normalizedQuery)}`
-        : `${API_BASE_URL}/api/search`;
+      const params = new URLSearchParams();
+      if (normalizedQuery) params.set('q', normalizedQuery);
+      if (typeFilter !== 'all') params.set('type', typeFilter);
+      if (categoryFilter !== 'all') params.set('category', categoryFilter);
+      if (languageFilter !== 'all') params.set('language', languageFilter);
+      const searchUrl = `${API_BASE_URL}/api/search${params.toString() ? '?' + params.toString() : ''}`;
       const response = await axios.get(searchUrl);
       setResults({
         slokas: Array.isArray(response.data?.slokas) ? response.data.slokas : [],
@@ -136,26 +143,52 @@ export default function Search() {
        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(255,215,0,0.08),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(122,46,46,0.2),transparent_28%)]"></div>
        <div className="max-w-6xl mx-auto relative z-10">
           
-          {/* Search Header */}
+
+          {/* Search Header + Filters */}
           <div className="relative mb-12">
-             <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
-                <SearchIcon className="w-6 h-6 text-devotion-gold" />
-             </div>
-             <input 
-               type="text" 
-               className="w-full bg-white/5 backdrop-blur-md border-2 border-devotion-gold/30 rounded-3xl py-6 pl-16 pr-6 text-2xl font-light text-white placeholder:text-gray-500 focus:border-devotion-gold focus:outline-none transition-all shadow-2xl"
-               placeholder="Search stress, anger, motivation..."
-               value={query}
-               onChange={(e) => setQuery(e.target.value)}
-             />
-             {query && (
-               <button 
-                 onClick={() => setQuery('')}
-                 className="absolute inset-y-0 right-6 flex items-center text-gray-500 hover:text-white"
-               >
-                 <X className="w-6 h-6" />
-               </button>
-             )}
+            <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
+              <SearchIcon className="w-6 h-6 text-devotion-gold" />
+            </div>
+            <input
+              type="text"
+              className="w-full bg-white/5 backdrop-blur-md border-2 border-devotion-gold/30 rounded-3xl py-6 pl-16 pr-6 text-2xl font-light text-white placeholder:text-gray-500 focus:border-devotion-gold focus:outline-none transition-all shadow-2xl"
+              placeholder="Search stress, anger, motivation..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                className="absolute inset-y-0 right-6 flex items-center text-gray-500 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            )}
+            {/* Advanced Filters */}
+            <div className="flex flex-wrap gap-4 mt-6">
+              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="px-4 py-2 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-devotion-gold">
+                <option value="all">All Types</option>
+                <option value="sloka">Slokas</option>
+                <option value="story">Stories</option>
+                <option value="video">Videos</option>
+                <option value="movie">Movies</option>
+              </select>
+              <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="px-4 py-2 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-devotion-gold">
+                <option value="all">All Categories</option>
+                <option value="spiritual">Spiritual</option>
+                <option value="kids">Kids</option>
+                <option value="animated">Animated</option>
+                <option value="movie">Movie</option>
+                <option value="story">Story</option>
+                <option value="quiz">Quiz</option>
+              </select>
+              <select value={languageFilter} onChange={e => setLanguageFilter(e.target.value)} className="px-4 py-2 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-devotion-gold">
+                <option value="all">All Languages</option>
+                <option value="telugu">Telugu</option>
+                <option value="hindi">Hindi</option>
+                <option value="english">English</option>
+              </select>
+            </div>
           </div>
 
           {/* Results Area */}

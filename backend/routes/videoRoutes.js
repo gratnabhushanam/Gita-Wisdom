@@ -1,3 +1,5 @@
+// HLS DRM token endpoint
+router.get('/hls-token', protect, require('../controllers/videoController').getHlsToken);
 const express = require('express');
 const router = express.Router();
 const {
@@ -32,6 +34,7 @@ router.post('/user-reels', protect, uploadReelVideo.single('video'), uploadUserR
 router.get('/user-reels/me', protect, getMyReels);
 router.get('/user-reels/moderation', protect, admin, getUserReelModerationQueue);
 router.patch('/user-reels/:id/moderate', protect, admin, moderateUserReel);
+router.post('/user-reels/bulk-moderate', protect, admin, require('../controllers/videoController').bulkModerateUserReels);
 router.post('/user-reels/:id/like', protect, toggleUserReelLike);
 router.post('/user-reels/:id/share', protect, shareUserReel);
 router.post('/user-reels/:id/comments', protect, addUserReelComment);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import KrishnaSVG from '../assets/krishna-scene.svg';
 import axios from 'axios';
 import { Trophy, CheckCircle, XCircle, ArrowRight, RefreshCcw, Play, Loader } from 'lucide-react';
 
@@ -105,6 +106,8 @@ export default function Quiz() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#06101E] pt-24 pb-12 px-4 flex items-center justify-center relative overflow-hidden">
+        {/* Cinematic Krishna SVG background */}
+        <img src={KrishnaSVG} alt="Krishna Scene" className="w-full max-w-xs absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none select-none opacity-70" style={{zIndex:1}} />
         <div className="text-center">
           <Loader className="w-12 h-12 text-[#FFD700] mx-auto mb-4 animate-spin" />
           <p className="text-[#FFD700] font-black text-lg">Loading Questions...</p>
@@ -123,13 +126,13 @@ export default function Quiz() {
             className="mt-4 bg-[#FFD700] text-[#06101E] px-6 py-2 rounded-full font-bold hover:brightness-110"
           >
             Reload
+          <button
+            className={`bg-devotion-gold text-white px-4 py-2 rounded-lg shadow-md hover:bg-yellow-500 transition btn-ripple btn-glow btn-scale min-h-[44px] min-w-[44px] ${selectedOption === idx ? 'ring-2 ring-yellow-400' : ''}`}
+            onClick={() => handleOptionClick(idx)}
+            disabled={showAnswer}
+          >
+            {option}
           </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
     <div className="min-h-screen bg-[#06101E] pt-24 pb-12 px-4 flex items-center justify-center relative overflow-hidden">
       
       {/* Background elements */}

@@ -5,6 +5,7 @@ const StoryMongo = require('../models/mongo/StoryMongo');
 const MovieMongo = require('../models/mongo/MovieMongo');
 const VideoMongo = require('../models/mongo/VideoMongo');
 const generateToken = require('../utils/generateToken');
+const notificationService = require('../utils/notificationService');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const mockContentStore = require('../utils/mockContentStore');
@@ -887,6 +888,22 @@ exports.verifyRegistrationOtp = async (req, res) => {
 
     pendingRegistrations.delete(safeEmail);
 
+    // In-app notification for successful registration (MongoDB only)
+    if (useMongoStore() && user && user._id) {
+      try {
+        await notificationService.sendInApp({
+          userId: user._id,
+          type: 'system',
+          title: 'Welcome to Gita Wisdom!',
+          body: 'Your account was created successfully. Explore divine content and daily wisdom.',
+          data: { event: 'registration' },
+        });
+      } catch (err) {
+        // Log but do not block registration
+        console.warn('Failed to send in-app notification:', err.message);
+      }
+    }
+
     return res.status(201).json({
       id: user.id,
       name: user.name,
@@ -1024,6 +1041,20 @@ exports.verifyPasswordResetOtp = async (req, res) => {
 
     target.password = hashedPassword;
     await target.save();
+    // In-app notification for password reset (MongoDB only)
+    if (useMongoStore() && target && target._id) {
+      try {
+        await notificationService.sendInApp({
+          userId: target._id,
+          type: 'system',
+          title: 'Password Changed',
+          body: 'Your Gita Wisdom password was reset successfully. If this was not you, please contact support immediately.',
+          data: { event: 'password-reset' },
+        });
+      } catch (err) {
+        console.warn('Failed to send in-app notification:', err.message);
+      }
+    }
     pendingPasswordResets.delete(safeEmail);
     return res.json({ message: 'Password reset successful' });
   } catch (error) {

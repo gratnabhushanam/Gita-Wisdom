@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { BookOpen, Book, Menu, X, BrainCircuit, User, Star, Zap, Heart, Search, Film, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import NotificationDropdown from './NotificationDropdown';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -58,6 +59,7 @@ export default function Navbar() {
               <div className="h-5 w-px bg-devotion-gold/20 mx-2"></div>
               
               {user ? (
+                <NotificationDropdown token={localStorage.getItem('token')} />
                 <Link to="/profile" className="group flex items-center px-2.5 py-1.5 bg-devotion-gold/10 border border-devotion-gold/20 rounded-lg transition-all hover:border-devotion-gold/40 hover:bg-devotion-gold/20">
                   {user.profilePicture ? (
                     <img src={user.profilePicture} alt="" className="w-4 h-4 rounded-full object-cover mr-1.5 border border-devotion-gold/50" />

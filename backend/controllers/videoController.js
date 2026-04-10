@@ -1,3 +1,64 @@
+// --- HLS DRM Token Endpoint ---
+const jwt = require('jsonwebtoken');
+
+// Issue a signed HLS playback token (JWT) for a given video
+exports.getHlsToken = (req, res) => {
+  const { videoId } = req.query;
+  if (!videoId) return res.status(400).json({ message: 'videoId required' });
+  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+  // Only allow for authenticated users (add more checks as needed)
+  const payload = {
+    sub: req.user.id || req.user._id,
+    videoId,
+    exp: Math.floor(Date.now() / 1000) + 60 * 30, // 30 min expiry
+  };
+  const token = jwt.sign(payload, process.env.HLS_JWT_SECRET || 'supersecret');
+  res.json({ token });
+};
+// Bulk moderate user reels (admin only)
+exports.bulkModerateUserReels = async (req, res) => {
+  try {
+    const { ids, status } = req.body;
+    if (!Array.isArray(ids) || !status) {
+      return res.status(400).json({ message: 'ids (array) and status are required' });
+    }
+    const allowed = ['approved', 'rejected', 'pending'];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ message: 'Invalid moderation status' });
+    }
+    if (status === 'rejected' && !String(req.body.note || '').trim()) {
+      return res.status(400).json({ message: 'Rejection note is required' });
+    }
+    let results = [];
+    for (const id of ids) {
+      let reel;
+      if (isMockMode()) {
+        const reels = mockContentStore.listVideos();
+        reel = reels.find((item) => String(item.id) === String(id) && Boolean(item.isUserReel));
+        if (!reel) continue;
+        reel.moderationStatus = status;
+        reel.moderationNote = req.body.note || '';
+        reel.reviewedBy = req.user.id;
+        reel.updatedAt = new Date().toISOString();
+        results.push(mapVideo(reel));
+      } else {
+        reel = useMongoStore()
+          ? await VideoMongo.findOne({ _id: String(id), isUserReel: true })
+          : await Video.findOne({ where: { id, isUserReel: true } });
+        if (!reel) continue;
+        reel.moderationStatus = status;
+        reel.moderationNote = req.body.note || '';
+        reel.reviewedBy = req.user.id;
+        await reel.save();
+        results.push(mapVideo(reel));
+      }
+    }
+    return res.json({ updated: results.length, results });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
 const { Video, User } = require('../models');
 const mongoose = require('mongoose');
 const VideoMongo = require('../models/mongo/VideoMongo');

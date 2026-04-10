@@ -66,14 +66,45 @@ const searchMockContent = (query) => ({
   movies: mockContentStore.listMovies().filter((movie) => movieMatches(movie, query)).map((movie) => mapMovie(movie)),
 });
 
+
 exports.searchAll = async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, type, category, language } = req.query;
     const normalizedQuery = String(q || '').trim();
+    const normalizedType = String(type || 'all').toLowerCase();
+    const normalizedCategory = String(category || 'all').toLowerCase();
+    const normalizedLanguage = String(language || 'all').toLowerCase();
+
+    // Helper to filter arrays by category/language
+    const filterBy = (arr, opts = {}) => arr.filter(item => {
+      if (opts.category && opts.category !== 'all') {
+        if (String(item.category || '').toLowerCase() !== opts.category) return false;
+      }
+      if (opts.language && opts.language !== 'all') {
+        if (String(item.language || '').toLowerCase() !== opts.language) return false;
+      }
+      return true;
+    });
+
+    // If type is set, only return that type
+    const typeMap = {
+      sloka: 'slokas',
+      story: 'stories',
+      video: 'videos',
+      movie: 'movies',
+    };
 
     if (!normalizedQuery) {
       if (isMockMode()) {
-        return res.json(searchMockContent(''));
+        let results = searchMockContent('');
+        // Apply filters
+        Object.keys(results).forEach(key => {
+          results[key] = filterBy(results[key], { category: normalizedCategory, language: normalizedLanguage });
+        });
+        if (typeMap[normalizedType]) {
+          Object.keys(results).forEach(key => { if (key !== typeMap[normalizedType]) results[key] = []; });
+        }
+        return res.json(results);
       }
 
       if (useMongoStore()) {
@@ -83,13 +114,16 @@ exports.searchAll = async (req, res) => {
           VideoMongo.find({ isUserReel: { $ne: true } }),
           MovieMongo.find({}),
         ]);
-
-        return res.json({
-          slokas: slokas.map(mapSloka),
-          stories: stories.map(mapStory),
-          videos: videos.filter((video) => isSearchableVideo(video)).map(mapVideo),
-          movies: movies.map((movie) => mapMovie(movie)),
-        });
+        let results = {
+          slokas: filterBy(slokas.map(mapSloka), { category: normalizedCategory, language: normalizedLanguage }),
+          stories: filterBy(stories.map(mapStory), { category: normalizedCategory, language: normalizedLanguage }),
+          videos: filterBy(videos.filter((video) => isSearchableVideo(video)).map(mapVideo), { category: normalizedCategory, language: normalizedLanguage }),
+          movies: filterBy(movies.map(mapMovie), { category: normalizedCategory, language: normalizedLanguage }),
+        };
+        if (typeMap[normalizedType]) {
+          Object.keys(results).forEach(key => { if (key !== typeMap[normalizedType]) results[key] = []; });
+        }
+        return res.json(results);
       }
 
       const [slokas, stories, videos, movies] = await Promise.all([
@@ -107,18 +141,30 @@ exports.searchAll = async (req, res) => {
           attributes: ['id', 'title', 'description', 'videoUrl', 'youtubeUrl', 'thumbnail', 'releaseYear', 'ownerHistory', 'tags', 'createdAt', 'updatedAt'],
         }),
       ]);
-
-      return res.json({
-        slokas: slokas.map(mapSloka),
-        stories: stories.map(mapStory),
-        videos: videos.filter((video) => isSearchableVideo(video)).map(mapVideo),
-        movies: movies.map((movie) => mapMovie(movie)),
-      });
+      let results = {
+        slokas: filterBy(slokas.map(mapSloka), { category: normalizedCategory, language: normalizedLanguage }),
+        stories: filterBy(stories.map(mapStory), { category: normalizedCategory, language: normalizedLanguage }),
+        videos: filterBy(videos.filter((video) => isSearchableVideo(video)).map(mapVideo), { category: normalizedCategory, language: normalizedLanguage }),
+        movies: filterBy(movies.map(mapMovie), { category: normalizedCategory, language: normalizedLanguage }),
+      };
+      if (typeMap[normalizedType]) {
+        Object.keys(results).forEach(key => { if (key !== typeMap[normalizedType]) results[key] = []; });
+      }
+      return res.json(results);
     }
+
 
     if (isMockMode()) {
-      return res.json(searchMockContent(normalizedQuery));
+      let results = searchMockContent(normalizedQuery);
+      Object.keys(results).forEach(key => {
+        results[key] = filterBy(results[key], { category: normalizedCategory, language: normalizedLanguage });
+      });
+      if (typeMap[normalizedType]) {
+        Object.keys(results).forEach(key => { if (key !== typeMap[normalizedType]) results[key] = []; });
+      }
+      return res.json(results);
     }
+
 
     if (useMongoStore()) {
       const qRegex = mongoRegex(normalizedQuery);
@@ -165,13 +211,16 @@ exports.searchAll = async (req, res) => {
           ],
         }),
       ]);
-
-      return res.json({
-        slokas: slokas.map(mapSloka),
-        stories: stories.map(mapStory),
-        videos: videos.filter((video) => isSearchableVideo(video)).map(mapVideo),
-        movies: movies.map(mapMovie),
-      });
+      let results = {
+        slokas: filterBy(slokas.map(mapSloka), { category: normalizedCategory, language: normalizedLanguage }),
+        stories: filterBy(stories.map(mapStory), { category: normalizedCategory, language: normalizedLanguage }),
+        videos: filterBy(videos.filter((video) => isSearchableVideo(video)).map(mapVideo), { category: normalizedCategory, language: normalizedLanguage }),
+        movies: filterBy(movies.map(mapMovie), { category: normalizedCategory, language: normalizedLanguage }),
+      };
+      if (typeMap[normalizedType]) {
+        Object.keys(results).forEach(key => { if (key !== typeMap[normalizedType]) results[key] = []; });
+      }
+      return res.json(results);
     }
 
     const [slokas, stories, videos, movies] = await Promise.all([
@@ -181,7 +230,9 @@ exports.searchAll = async (req, res) => {
             { sanskrit: { [Op.like]: `%${q}%` } },
             { englishMeaning: { [Op.like]: `%${q}%` } },
             { teluguMeaning: { [Op.like]: `%${q}%` } }
-          ]
+          ],
+          ...(normalizedCategory !== 'all' ? { category: normalizedCategory } : {}),
+          ...(normalizedLanguage !== 'all' ? { language: normalizedLanguage } : {}),
         }
       }),
       Story.findAll({
@@ -191,23 +242,23 @@ exports.searchAll = async (req, res) => {
             { title: { [Op.like]: `%${q}%` } },
             { summary: { [Op.like]: `%${q}%` } },
             { content: { [Op.like]: `%${q}%` } }
-          ]
+          ],
+          ...(normalizedCategory !== 'all' ? { category: normalizedCategory } : {}),
+          ...(normalizedLanguage !== 'all' ? { language: normalizedLanguage } : {}),
         }
       }),
       Video.findAll({
         attributes: ['id', 'title', 'description', 'videoUrl', 'youtubeUrl', 'thumbnail', 'category', 'language', 'duration', 'tags', 'views', 'isKids', 'isUserReel', 'uploadedBy', 'uploadSource', 'contentType', 'moderationStatus', 'moderationNote', 'reviewedBy', 'likesCount', 'sharesCount', 'commentsCount', 'likedBy', 'comments', 'chapter', 'moral', 'script', 'createdAt', 'updatedAt'],
         where: {
-          [Op.and]: [
-            { isUserReel: { [Op.not]: true } },
-            {
-              [Op.or]: [
-                { title: { [Op.like]: `%${q}%` } },
-                { description: { [Op.like]: `%${q}%` } },
-                { category: { [Op.like]: `%${q}%` } },
-                { language: { [Op.like]: `%${q}%` } }
-              ]
-            }
-          ]
+          isUserReel: { [Op.not]: true },
+          [Op.or]: [
+            { title: { [Op.like]: `%${q}%` } },
+            { description: { [Op.like]: `%${q}%` } },
+            { category: { [Op.like]: `%${q}%` } },
+            { language: { [Op.like]: `%${q}%` } }
+          ],
+          ...(normalizedCategory !== 'all' ? { category: normalizedCategory } : {}),
+          ...(normalizedLanguage !== 'all' ? { language: normalizedLanguage } : {}),
         }
       }),
       Movie.findAll({
@@ -216,17 +267,22 @@ exports.searchAll = async (req, res) => {
             { title: { [Op.like]: `%${q}%` } },
             { description: { [Op.like]: `%${q}%` } },
             { ownerHistory: { [Op.like]: `%${q}%` } }
-          ]
+          ],
+          ...(normalizedCategory !== 'all' ? { category: normalizedCategory } : {}),
+          ...(normalizedLanguage !== 'all' ? { language: normalizedLanguage } : {}),
         }
       })
     ]);
-
-    res.json({
+    let results = {
       slokas: slokas.map(mapSloka),
       stories: stories.map(mapStory),
       videos: videos.filter((video) => isSearchableVideo(video)).map(mapVideo),
       movies: movies.map(mapMovie),
-    });
+    };
+    if (typeMap[normalizedType]) {
+      Object.keys(results).forEach(key => { if (key !== typeMap[normalizedType]) results[key] = []; });
+    }
+    return res.json(results);
   } catch (error) {
     if (String(error.message || '').toLowerCase().includes('no such column')) {
       return res.json(searchMockContent(String(req.query?.q || '').trim()));
