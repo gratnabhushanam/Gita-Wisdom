@@ -3,5 +3,5 @@
 ## Steps:
 1. [x] Update create_admin.js fallback
 2. [x] Update list_users.js fallback
-3. [ ] Commit/push to GitHub
-4. [ ] Complete
+3. [x] Commit/push to GitHub - PR created
+4. [x] Complete
