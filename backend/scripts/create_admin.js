@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const dotenv = require('dotenv');
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/gita_wisdom';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://ratnabhushanam8688_db_user:Ratna%402005@cluster0.prfkqkt.mongodb.net/';
 const ADMIN_NAME = process.env.ADMIN_NAME || 'Gita Admin';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'gitawisdom143@gmail.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Ratnapavan@7896';
