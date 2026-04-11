@@ -38,3 +38,4 @@ async function createAdmin() {
 }
 
 createAdmin().catch(e => { console.error(e); mongoose.disconnect(); });
+
