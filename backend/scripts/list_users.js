@@ -4,7 +4,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/gita_wisdom';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://ratnabhushanam8688_db_user:Ratna%402005@cluster0.prfkqkt.mongodb.net/';
 
 const userSchema = new mongoose.Schema({
   name: String,
